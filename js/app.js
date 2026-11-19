@@ -10,6 +10,12 @@
   var MAX_HIGHLIGHT = 1500000;
   var MAX_FIND_MATCHES = 3000;
   var MAX_FIND_HIGHLIGHT_TEXT = 1500000;
+  var MAX_FOLD_LINES = 5000;
+  /* 超过这个行数只做「按行着色」，不再逐 token 上色：span 数量是卡顿的主因 */
+  var MAX_RICH_LINES = 4000;
+  /* 超大文档先渲染这么多行，其余滚动到底或跳转时再续渲染 */
+  var MAX_RENDER_LINES = 8000;
+  var RENDER_CHUNK = 8000;
 
   var $ = function (id) {
     return document.getElementById(id);
@@ -99,6 +105,9 @@
     outputGutterWrap: $('outputGutterWrap'),
     outputGutter: $('outputGutter'),
     treeView: $('treeView'),
+    renderMore: $('renderMore'),
+    renderMoreText: $('renderMoreText'),
+    renderMoreBtn: $('renderMoreBtn'),
     emptyState: $('emptyState'),
     errorState: $('errorState'),
     errorMessage: $('errorMessage'),
@@ -132,7 +141,15 @@
     treeDirty: true,
     fileName: 'data.json',
     lastGutterLines: -1,
-    lastGutterError: null
+    lastGutterError: null,
+    renderedLines: 0,
+    totalLines: 0,
+    gutterRows: 0,
+    htmlLines: null,
+    lineDepths: null,
+    lineMode: 'plain',
+    indentUnit: 2,
+    appending: false
   };
 
   var timers = {
@@ -201,6 +218,19 @@
     openIndex: -1,
     closeIndex: -1,
     depth: 0
+  };
+
+  var foldState = {
+    lines: [],
+    lineStarts: [],
+    lineCount: 0,
+    folds: [],
+    byKey: Object.create(null),
+    byLine: Object.create(null),
+    hidden: [],
+    applied: [],
+    collapsed: Object.create(null),
+    text: ''
   };
 
   var undoStack = [];
@@ -352,6 +382,23 @@
 
   function syncOutputGutter() {
     els.outputGutter.style.transform = 'translateY(' + -els.outputScroll.scrollTop + 'px)';
+
+    /* 滚到接近底部时把剩下的行续渲染出来 */
+    if (state.appending) return;
+    if (!state.totalLines) return;
+    if (state.renderedLines >= state.totalLines) return;
+
+    var box = els.outputScroll;
+    if (!box.clientHeight) return;
+    if (box.scrollTop + box.clientHeight < box.scrollHeight - 240) return;
+
+    state.appending = true;
+
+    try {
+      appendRenderRange(state.renderedLines, state.renderedLines + RENDER_CHUNK);
+    } finally {
+      state.appending = false;
+    }
   }
 
   function updateCursor() {
@@ -613,6 +660,62 @@
       'translate(' + -els.input.scrollLeft + 'px,' + -els.input.scrollTop + 'px)';
   }
 
+  function buildMarkupForRange(text, matches, from, to) {
+    var parts = [];
+    var cursor = from;
+
+    for (var i = 0; i < matches.length; i++) {
+      var item = matches[i];
+      if (item.end <= from) continue;
+      if (item.start >= to) break;
+
+      var start = Math.max(item.start, from);
+      var end = Math.min(item.end, to);
+
+      if (start > cursor) {
+        parts.push('<span class="find-ghost">' + escapeHtml(text.slice(cursor, start)) + '</span>');
+      }
+
+      parts.push(
+        '<mark class="find-mark" data-find-index="' + i + '">' +
+          '<span class="find-ghost">' + escapeHtml(text.slice(start, end)) + '</span>' +
+        '</mark>'
+      );
+      cursor = end;
+    }
+
+    if (cursor < to) {
+      parts.push('<span class="find-ghost">' + escapeHtml(text.slice(cursor, to)) + '</span>');
+    }
+
+    return parts.join('');
+  }
+
+  function buildOverlayLine(index, text, matches, starts) {
+    var from = starts[index];
+    var to = index + 1 < starts.length ? starts[index + 1] - 1 : text.length;
+    var hidden = foldState.hidden.length === starts.length && foldState.hidden[index];
+
+    return '<div class="ol' + (hidden ? ' is-folded' : '') +
+      '" data-line="' + index + '">' +
+      buildMarkupForRange(text, matches, from, to) + '</div>';
+  }
+
+  function appendOverlayRange(from, to) {
+    if (findBars.right.layer.hidden) return;
+    if (!foldState.lineStarts.length) return;
+
+    var text = state.output || '';
+    var html = '';
+
+    for (var i = from; i < to; i++) {
+      html += buildOverlayLine(i, text, findState.rightMatches, foldState.lineStarts);
+    }
+
+    els.outputFindLayerInner.insertAdjacentHTML('beforeend', html);
+    paintCurrentMark('right');
+  }
+
   function renderFindOverlay(side) {
     var text = findSideText(side);
     var matches = findSideMatches(side);
@@ -623,27 +726,25 @@
       return;
     }
 
-    var parts = [];
-    var last = 0;
+    var html;
 
-    for (var i = 0; i < matches.length; i++) {
-      var item = matches[i];
-      if (item.start < last) continue;
+    if (side === 'right') {
+      /* 右侧是逐行 DOM，高亮层必须用同样的行结构，否则折叠后错位 */
+      var starts = foldState.lineStarts;
+      var total = starts.length;
+      var upto = Math.min(total, state.renderedLines);
+      var chunks = [];
 
-      if (item.start > last) {
-        parts.push('<span class="find-ghost">' + escapeHtml(text.slice(last, item.start)) + '</span>');
+      for (var lineIndex = 0; lineIndex < upto; lineIndex++) {
+        chunks.push(buildOverlayLine(lineIndex, text, matches, starts));
       }
 
-      parts.push(
-        '<mark class="find-mark" data-find-index="' + i + '">' +
-          '<span class="find-ghost">' + escapeHtml(text.slice(item.start, item.end)) + '</span>' +
-        '</mark>'
-      );
-      last = item.end;
+      html = chunks.join('');
+    } else {
+      html = buildMarkupForRange(text, matches, 0, text.length);
     }
 
-    parts.push('<span class="find-ghost">' + escapeHtml(text.slice(last)) + '</span>');
-    bar.layerInner.innerHTML = parts.join('') || '<span class="find-ghost"> </span>';
+    bar.layerInner.innerHTML = html || '<span class="find-ghost"> </span>';
     bar.layer.hidden = false;
     setSideHighlighted(side, true);
 
@@ -660,10 +761,13 @@
 
     if (!findSideHighlighted(side) || findState.current < 0) return;
 
-    var mark = bar.layerInner.querySelector(
+    var marks = bar.layerInner.querySelectorAll(
       '.find-mark[data-find-index="' + findState.current + '"]'
     );
-    if (mark) mark.classList.add('is-current');
+
+    for (var i = 0; i < marks.length; i++) {
+      marks[i].classList.add('is-current');
+    }
   }
 
   function updateFindCount() {
@@ -883,6 +987,12 @@
 
     if (state.view !== 'text') setView('text');
 
+    var targetLine = lineIndexAtOffset(item.start);
+    if (targetLine >= 0) {
+      ensureRendered(targetLine);
+      ensureLinesVisible([targetLine]);
+    }
+
     var mark = findBars.right.layerInner.querySelector(
       '.find-mark[data-find-index="' + findState.current + '"]'
     );
@@ -905,7 +1015,7 @@
       var before = (state.output || '').slice(0, item.start);
       var line = before.split('\n').length;
       var column = item.start - before.lastIndexOf('\n');
-      desiredTop = (line - 1) * lineHeight - scrollBox.height / 2;
+      desiredTop = visibleRowTop(line - 1) - scrollBox.height / 2;
       desiredLeft = (column - 1) * 7.8 - scrollBox.width / 2;
     }
 
@@ -1088,6 +1198,38 @@
     if (returnFocus) els.input.focus();
   }
 
+  function lineElementOf(node, offset) {
+    var el = node && node.nodeType === 1 ? node : (node ? node.parentNode : null);
+
+    while (el && el !== els.output) {
+      if (el.classList && el.classList.contains('ol')) return el;
+      el = el.parentNode;
+    }
+
+    if (el !== els.output) return null;
+
+    var childCount = el.childNodes.length;
+    if (!childCount) return null;
+
+    var index = Math.min(Math.max(0, offset), childCount - 1);
+    var child = el.childNodes[index];
+
+    if (child && child.nodeType === 1 && child.classList.contains('ol')) return child;
+
+    if (child && child.nextElementSibling &&
+        child.nextElementSibling.classList.contains('ol')) {
+      return child.nextElementSibling;
+    }
+
+    if (child && child.previousElementSibling &&
+        child.previousElementSibling.classList.contains('ol')) {
+      return child.previousElementSibling;
+    }
+
+    return null;
+  }
+
+  /** 把鼠标坐标换算成 state.output 里的字符偏移（逐行 DOM，按行起始偏移还原）。 */
   function textOffsetAtPoint(container, x, y) {
     var range = null;
 
@@ -1104,16 +1246,24 @@
 
     if (!range || !container.contains(range.startContainer)) return null;
 
-    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
-    var offset = 0;
-    var node;
+    var lineEl = lineElementOf(range.startContainer, range.startOffset);
+    if (!lineEl) return null;
 
-    while ((node = walker.nextNode())) {
-      if (node === range.startContainer) return offset + range.startOffset;
-      offset += node.nodeValue.length;
+    var lineStart = parseInt(lineEl.getAttribute('data-start'), 10);
+    if (!isFinite(lineStart)) return null;
+
+    if (!lineEl.contains(range.startContainer)) return lineStart;
+
+    var probe = document.createRange();
+
+    try {
+      probe.setStart(lineEl, 0);
+      probe.setEnd(range.startContainer, range.startOffset);
+    } catch (err) {
+      return lineStart;
     }
 
-    return null;
+    return lineStart + probe.toString().length;
   }
 
   function handleInputFindClick() {
@@ -1134,6 +1284,16 @@
 
   function handleOutputFindClick(event) {
     if (els.outputScroll.hidden) return;
+
+    var chip = event.target && event.target.closest
+      ? event.target.closest('[data-fold-chip]')
+      : null;
+
+    if (chip) {
+      event.preventDefault();
+      toggleFold(chip.getAttribute('data-fold-chip'));
+      return;
+    }
 
     var selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
@@ -1408,26 +1568,51 @@
     return depths;
   }
 
-  function renderOutputGutter(text, withDepth) {
-    var lines = text.split('\n');
-    var lineCount = lines.length;
+  function renderOutputGutter(text, withDepth, depths, limit) {
+    var lineCount = foldState.lineCount || text.split('\n').length;
 
-    if (lineCount > 5000) {
+    if (lineCount > MAX_FOLD_LINES) {
       els.outputGutterWrap.style.display = 'none';
+      els.outputGutter.innerHTML = '';
       return;
     }
 
     els.outputGutterWrap.style.display = '';
 
-    var depths = withDepth ? computeLineDepths(text) : null;
+    if (withDepth && !depths) depths = computeLineDepths(text);
+    if (!withDepth) depths = null;
+
+    var upto = typeof limit === 'number' ? Math.min(limit, lineCount) : lineCount;
+
+    els.outputGutter.innerHTML = buildGutterHtml(0, upto, depths);
+  }
+
+  function buildGutterHtml(from, to, depths) {
+    var foldable = foldEnabled();
     var html = '';
 
-    for (var i = 1; i <= lineCount; i++) {
-      var depthClass = depths ? ' class="depth-' + (depths[i - 1] % 8) + '"' : '';
-      html += '<div' + depthClass + '>' + i + '</div>';
+    for (var i = from; i < to; i++) {
+      var classes = 'gutter-row';
+      if (depths) classes += ' depth-' + (depths[i] % 8);
+
+      var fold = foldable ? foldState.byLine[i] : null;
+      var collapsed = !!(fold && foldState.collapsed[fold.key]);
+
+      if (foldable && foldState.hidden[i]) classes += ' is-folded';
+
+      var button = fold
+        ? '<span class="fold-btn" role="button" tabindex="-1" data-fold-key="' +
+            fold.key + '" data-collapsed="' + (collapsed ? '1' : '0') +
+            '" aria-expanded="' + (!collapsed) +
+            '" title="' + (collapsed ? '展开这一层' : '折叠这一层') + '"></span>'
+        : '';
+
+      html += '<div class="' + classes + '" data-line="' + i + '">' +
+        button + '<span class="gutter-num">' + (i + 1) + '</span>' +
+      '</div>';
     }
 
-    els.outputGutter.innerHTML = html;
+    return html;
   }
 
   /* ---------------- 语法高亮 ---------------- */
@@ -1436,7 +1621,7 @@
     return ' depth-' + (depth % 8);
   }
 
-  function highlightJSON(text) {
+  function highlightJSON(text, depths) {
     var pattern = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+\-]?\d+)?)|([{}\[\],])/g;
     var html = '';
     var last = 0;
@@ -1493,33 +1678,399 @@
     html += escapeHtml(text.slice(last));
 
     var htmlLines = html.split('\n');
-    var lineDepths = computeLineDepths(text);
+    var lineDepths = depths || computeLineDepths(text);
 
     for (var lineIndex = 0; lineIndex < htmlLines.length; lineIndex++) {
+      var lineDepth = lineDepths[lineIndex] || 0;
       htmlLines[lineIndex] = htmlLines[lineIndex].replace(/^[ \t]+/, function (spaces) {
-        return '<span class="indent-guide depth-' + (lineDepths[lineIndex] % 8) + '">' +
+        return '<span class="indent-guide depth-' + (lineDepth % 8) + '">' +
           spaces +
         '</span>';
       });
     }
 
-    return htmlLines.join('\n');
+    return htmlLines;
   }
 
-  function highlightJSONCoarse(text) {
+  function highlightJSONCoarse(text, depths) {
     var lines = text.split('\n');
-    var depths = computeLineDepths(text);
+    var lineDepths = depths || computeLineDepths(text);
     var parts = [];
 
     for (var i = 0; i < lines.length; i++) {
       parts.push(
-        '<span class="coarse-line depth-' + (depths[i] % 8) + '">' +
+        '<span class="coarse-line depth-' + (lineDepths[i] % 8) + '">' +
           escapeHtml(lines[i]) +
         '</span>'
       );
     }
 
-    return parts.join('\n');
+    return parts;
+  }
+
+  /* ---------------- 层级折叠 ---------------- */
+
+  /**
+   * 把文本切成逐行数组，并记录每行在原文中的起始偏移。
+   * 行偏移是右侧「点击联动 / 括号聚焦 / 查找跳转」的映射基准。
+   */
+  function prepareFoldLines(text) {
+    var lines = text.split('\n');
+    var starts = new Array(lines.length);
+    var acc = 0;
+
+    for (var i = 0; i < lines.length; i++) {
+      starts[i] = acc;
+      acc += lines[i].length + 1;
+    }
+
+    foldState.lines = lines;
+    foldState.lineStarts = starts;
+    foldState.lineCount = lines.length;
+
+    return lines;
+  }
+
+  function resetFoldState() {
+    foldState.folds = [];
+    foldState.byKey = Object.create(null);
+    foldState.byLine = Object.create(null);
+    foldState.hidden = [];
+    foldState.applied = [];
+    foldState.collapsed = Object.create(null);
+    foldState.text = '';
+  }
+
+  function lineIndexAtOffset(offset) {
+    var starts = foldState.lineStarts;
+
+    if (!starts.length) return -1;
+
+    var lo = 0;
+    var hi = starts.length - 1;
+
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+
+    return lo;
+  }
+
+  /** 折叠后第 lineIndex 行在可视区里的纵向位置（按 22px 行高累计可见行）。 */
+  function visibleRowTop(lineIndex) {
+    var hidden = foldState.hidden;
+    var lineHeight = 22;
+
+    if (!hidden.length || lineIndex <= 0) return Math.max(0, lineIndex) * lineHeight;
+
+    var row = 0;
+    var limit = Math.min(lineIndex, hidden.length);
+
+    for (var i = 0; i < limit; i++) {
+      if (!hidden[i]) row++;
+    }
+
+    return row * lineHeight;
+  }
+
+  /**
+   * 单次扫描出所有「跨行容器」：
+   * - key    开括号的字符偏移（同时作为折叠状态的稳定标识）
+   * - 子项数量、是否带尾随逗号，用于折叠后的摘要
+   */
+  function analyzeFolds(text) {
+    var starts = foldState.lineStarts;
+    var folds = [];
+    var stack = [];
+    var inString = false;
+    var escaped = false;
+
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        if (stack.length) stack[stack.length - 1].hasContent = true;
+        continue;
+      }
+
+      if (ch === '{' || ch === '[') {
+        if (stack.length) stack[stack.length - 1].hasContent = true;
+        stack.push({
+          start: i,
+          line: lineIndexAtOffset(i),
+          brace: ch,
+          children: 0,
+          hasContent: false
+        });
+        continue;
+      }
+
+      if (ch === '}' || ch === ']') {
+        var open = stack.pop();
+        if (!open) continue;
+
+        var closeLine = lineIndexAtOffset(i);
+        if (closeLine <= open.line) continue;
+
+        folds.push({
+          key: open.start,
+          start: open.start,
+          end: i,
+          brace: open.brace,
+          closeBrace: ch,
+          openLine: open.line,
+          closeLine: closeLine,
+          children: open.children + (open.hasContent ? 1 : 0),
+          trailingComma: text.charAt(i + 1) === ','
+        });
+        continue;
+      }
+
+      if (ch === ',') {
+        if (stack.length) stack[stack.length - 1].children++;
+        continue;
+      }
+
+      if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') continue;
+
+      if (stack.length) stack[stack.length - 1].hasContent = true;
+    }
+
+    return folds;
+  }
+
+  function bindFoldState(text) {
+    if (foldState.text !== text) {
+      foldState.collapsed = Object.create(null);
+    }
+
+    foldState.text = text;
+    foldState.folds = analyzeFolds(text);
+    foldState.byKey = Object.create(null);
+    foldState.byLine = Object.create(null);
+
+    for (var i = 0; i < foldState.folds.length; i++) {
+      var fold = foldState.folds[i];
+      foldState.byKey[fold.key] = fold;
+      foldState.byLine[fold.openLine] = fold;
+    }
+
+    var keys = Object.keys(foldState.collapsed);
+    for (var k = 0; k < keys.length; k++) {
+      if (!foldState.byKey[keys[k]]) delete foldState.collapsed[keys[k]];
+    }
+
+    computeFoldHidden();
+  }
+
+  /**
+   * 用差分数组算「哪些行被折叠隐藏」，复杂度 O(行数 + 折叠数)，
+   * 避免折叠全部时按范围逐行写（嵌套时是 O(行数²)）。
+   */
+  function computeFoldHidden() {
+    var lineCount = foldState.lineCount;
+    var diff = new Int32Array(lineCount + 1);
+    var keys = Object.keys(foldState.collapsed);
+
+    for (var k = 0; k < keys.length; k++) {
+      var fold = foldState.byKey[keys[k]];
+      if (!fold) continue;
+
+      diff[fold.openLine + 1] += 1;
+      if (fold.closeLine + 1 <= lineCount) diff[fold.closeLine + 1] -= 1;
+    }
+
+    var hidden = new Array(lineCount);
+    var running = 0;
+
+    for (var i = 0; i < lineCount; i++) {
+      running += diff[i];
+      hidden[i] = running > 0;
+    }
+
+    foldState.hidden = hidden;
+  }
+
+  function foldEnabled() {
+    return state.mode === 'pretty' &&
+      !!state.output &&
+      state.output.length <= MAX_HIGHLIGHT &&
+      foldState.lineCount > 0 &&
+      foldState.lineCount <= MAX_FOLD_LINES &&
+      foldState.folds.length > 0;
+  }
+
+  function foldSummaryText(fold) {
+    var label = fold.brace === '{'
+      ? fold.children + ' 个键'
+      : fold.children + ' 项';
+
+    return '… ' + label + ' ' + fold.closeBrace + (fold.trailingComma ? ',' : '');
+  }
+
+  function applyFoldState() {
+    var enabled = foldEnabled();
+
+    els.outputBody.classList.toggle('has-folds', enabled);
+
+    var lineCount = state.renderedLines;
+    var next = new Array(lineCount);
+    var i;
+
+    for (i = 0; i < lineCount; i++) {
+      next[i] = enabled ? !!foldState.hidden[i] : false;
+    }
+
+    /* 只改动状态发生翻转的行，避免每次折叠都遍历整篇文档 */
+    var prev = foldState.applied;
+    var lines = els.output.children;
+    var rows = els.outputGutter.children;
+    var overlays = els.outputFindLayerInner.children;
+    var full = !prev || prev.length !== lineCount;
+
+    for (i = 0; i < lineCount; i++) {
+      if (!full && prev[i] === next[i]) continue;
+
+      if (lines[i]) lines[i].classList.toggle('is-folded', next[i]);
+      if (rows[i]) rows[i].classList.toggle('is-folded', next[i]);
+      if (overlays[i]) overlays[i].classList.toggle('is-folded', next[i]);
+    }
+
+    foldState.applied = next;
+
+    var chips = els.output.querySelectorAll('[data-fold-chip]');
+    for (i = 0; i < chips.length; i++) {
+      var chipKey = chips[i].getAttribute('data-fold-chip');
+      chips[i].classList.toggle('is-visible', enabled && !!foldState.collapsed[chipKey]);
+    }
+
+    var buttons = els.outputGutter.querySelectorAll('.fold-btn');
+    for (i = 0; i < buttons.length; i++) {
+      var buttonKey = buttons[i].getAttribute('data-fold-key');
+      var collapsed = enabled && !!foldState.collapsed[buttonKey];
+
+      buttons[i].setAttribute('data-collapsed', collapsed ? '1' : '0');
+      buttons[i].setAttribute('aria-expanded', String(!collapsed));
+      buttons[i].title = collapsed ? '展开这一层' : '折叠这一层';
+    }
+
+    updateFoldButtons();
+    syncOutputGutter();
+  }
+
+  function updateFoldButtons() {
+    var isTree = state.view === 'tree';
+    var hasOutput = !!state.output;
+
+    if (isTree) {
+      els.expandBtn.hidden = !hasOutput;
+      els.collapseBtn.hidden = !hasOutput;
+      els.expandBtn.disabled = false;
+      els.collapseBtn.disabled = false;
+      return;
+    }
+
+    var enabled = foldEnabled();
+
+    els.expandBtn.hidden = !enabled;
+    els.collapseBtn.hidden = !enabled;
+
+    if (!enabled) {
+      els.expandBtn.disabled = true;
+      els.collapseBtn.disabled = true;
+      return;
+    }
+
+    var anyCollapsed = false;
+    for (var i = 0; i < foldState.folds.length; i++) {
+      if (foldState.collapsed[foldState.folds[i].key]) {
+        anyCollapsed = true;
+        break;
+      }
+    }
+
+    els.expandBtn.disabled = !anyCollapsed;
+    els.collapseBtn.disabled = false;
+  }
+
+  function setFoldCollapsed(key, collapsed) {
+    if (!foldState.byKey[key]) return;
+
+    if (collapsed) {
+      foldState.collapsed[key] = true;
+    } else {
+      delete foldState.collapsed[key];
+    }
+
+    computeFoldHidden();
+    applyFoldState();
+  }
+
+  function toggleFold(key) {
+    setFoldCollapsed(key, !foldState.collapsed[key]);
+  }
+
+  function foldAll() {
+    if (!foldEnabled()) return;
+
+    for (var i = 0; i < foldState.folds.length; i++) {
+      foldState.collapsed[foldState.folds[i].key] = true;
+    }
+
+    computeFoldHidden();
+    applyFoldState();
+  }
+
+  function unfoldAll() {
+    if (!foldEnabled()) return;
+
+    foldState.collapsed = Object.create(null);
+    computeFoldHidden();
+    applyFoldState();
+  }
+
+  /** 跳转到某一行之前，先把包含它的折叠逐层展开。 */
+  function ensureLinesVisible(linesToShow) {
+    if (!foldEnabled()) return false;
+
+    var changed = false;
+
+    for (var i = 0; i < linesToShow.length; i++) {
+      var target = linesToShow[i];
+      if (target < 0 || !foldState.hidden[target]) continue;
+
+      for (var f = 0; f < foldState.folds.length; f++) {
+        var fold = foldState.folds[f];
+        if (target > fold.openLine && target <= fold.closeLine && foldState.collapsed[fold.key]) {
+          delete foldState.collapsed[fold.key];
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      computeFoldHidden();
+      applyFoldState();
+    }
+
+    return changed;
   }
 
   /* ---------------- 括号层级聚焦 ---------------- */
@@ -1667,6 +2218,16 @@
     if (!open || open.pair < 0) return false;
 
     var close = scan.brackets[open.pair];
+
+    /* 括号可能在折叠区域或未渲染区，先展开/补齐再定位 */
+    var openLineIndex = lineIndexAtOffset(open.start);
+    var closeLineIndex = lineIndexAtOffset(close.start);
+    if (openLineIndex >= 0) {
+      ensureRendered(openLineIndex);
+      ensureRendered(closeLineIndex);
+      ensureLinesVisible([openLineIndex, closeLineIndex]);
+    }
+
     var openEl = els.output.querySelector(
       '[data-bracket-index="' + open.index + '"]'
     );
@@ -1773,19 +2334,179 @@
     els.outputScroll.scrollTop = 0;
     els.outputScroll.scrollLeft = 0;
 
-    var rich = highlight && text.length <= MAX_HIGHLIGHT;
+    prepareFoldLines(text);
+
+    var indent = getIndent();
+    state.indentUnit = indent === '\t' ? 0 : indent;
+
+    /* 行数过多时只按行着色：逐 token 的 span 会让大文档的构建和布局成倍变慢 */
+    var tooManyLines = foldState.lineCount > MAX_RICH_LINES;
+    var rich = highlight && !tooManyLines && text.length <= MAX_HIGHLIGHT;
     var coarse = highlight && !rich;
 
-    if (rich) {
-      els.output.innerHTML = highlightJSON(text);
-    } else if (coarse) {
-      els.output.innerHTML = highlightJSONCoarse(text);
+    var foldable = state.mode === 'pretty' &&
+      text.length <= MAX_HIGHLIGHT &&
+      foldState.lineCount <= MAX_FOLD_LINES;
+
+    if (foldable) {
+      bindFoldState(text);
     } else {
-      els.output.textContent = text;
+      resetFoldState();
     }
 
-    renderOutputGutter(text, rich || coarse);
+    var totalLines = foldState.lines.length;
+    var lazy = totalLines > MAX_RENDER_LINES;
+
+    var depths = ((rich || coarse) && !lazy) ? computeLineDepths(text) : null;
+    var lines = null;
+
+    if (rich) {
+      lines = highlightJSON(text, depths);
+    } else if (coarse && !lazy) {
+      lines = highlightJSONCoarse(text, depths);
+    } else if (!coarse && !lazy) {
+      lines = foldState.lines.map(function (line) {
+        return escapeHtml(line);
+      });
+    }
+
+    var hasFolds = foldable && foldState.folds.length > 0;
+
+    foldState.hasFolds = hasFolds;
+    state.htmlLines = lines;
+    state.lineDepths = depths;
+    state.totalLines = totalLines;
+    state.lineMode = rich ? 'rich' : (coarse ? 'coarse' : 'plain');
+
+    /* 超大文档先只渲染前一段，滚动到底或跳转时再续渲染，避免一次插入几十万行 */
+    var initial = Math.min(totalLines, MAX_RENDER_LINES);
+
+    els.output.innerHTML = buildLinesHtml(0, initial, hasFolds);
+    els.outputBody.classList.toggle('has-folds', hasFolds);
+
+    state.renderedLines = initial;
+    foldState.applied = new Array(initial);
+    extendApplied(0, initial, hasFolds);
+
+    renderOutputGutter(text, rich || coarse, depths, initial);
+    state.gutterRows = els.outputGutter.children.length;
+
+    updateRenderMoreBar();
+    updateFoldButtons();
     syncOutputGutter();
+  }
+
+  /** 取第 index 行的高亮 HTML：小文档用预生成结果，超大文档按行现算。 */
+  function lineContentAt(index) {
+    if (state.htmlLines) return state.htmlLines[index];
+
+    var line = foldState.lines[index] || '';
+
+    if (state.lineMode === 'coarse') {
+      var spaces = /^[ \t]*/.exec(line)[0];
+      var depth = 0;
+
+      if (spaces.indexOf('\t') >= 0) {
+        depth = spaces.length;
+      } else {
+        var unit = state.indentUnit > 0 ? state.indentUnit : 2;
+        depth = Math.floor(spaces.length / unit);
+      }
+
+      return '<span class="coarse-line depth-' + (depth % 8) + '">' +
+        escapeHtml(line) + '</span>';
+    }
+
+    return escapeHtml(line);
+  }
+
+  function buildLineHtml(index, hasFolds) {
+    var fold = hasFolds ? foldState.byLine[index] : null;
+    var collapsed = !!(fold && foldState.collapsed[fold.key]);
+    var hiddenLine = hasFolds && !!foldState.hidden[index];
+    var chip = '';
+
+    if (fold) {
+      chip = '<span class="fold-chip' + (collapsed ? ' is-visible' : '') +
+        '" data-fold-chip="' + fold.key +
+        '" data-summary="' + escapeHtml(foldSummaryText(fold)) + '"></span>';
+    }
+
+    return '<div class="ol' + (hiddenLine ? ' is-folded' : '') +
+      '" data-line="' + index + '" data-start="' + (foldState.lineStarts[index] || 0) + '">' +
+      lineContentAt(index) + chip + '</div>';
+  }
+
+  function buildLinesHtml(from, to, hasFolds) {
+    var html = '';
+
+    for (var i = from; i < to; i++) html += buildLineHtml(i, hasFolds);
+
+    return html;
+  }
+
+  function extendApplied(from, to, hasFolds) {
+    for (var i = from; i < to; i++) {
+      foldState.applied[i] = hasFolds && !!foldState.hidden[i];
+    }
+  }
+
+  /** 把 [from, to) 行的 HTML 追加到结果区（分段渲染与跳转按需扩展共用）。 */
+  function appendRenderRange(from, to) {
+    var total = state.totalLines;
+    if (!total) return;
+
+    to = Math.min(to, total);
+    if (from >= to) return;
+
+    els.output.insertAdjacentHTML('beforeend',
+      buildLinesHtml(from, to, foldState.hasFolds));
+
+    if (state.gutterRows > 0) {
+      els.outputGutter.insertAdjacentHTML('beforeend',
+        buildGutterHtml(from, to, state.lineDepths));
+      state.gutterRows += (to - from);
+    }
+
+    extendApplied(from, to, foldState.hasFolds);
+
+    if (!findBars.right.layer.hidden) appendOverlayRange(from, to);
+
+    state.renderedLines = to;
+
+    updateRenderMoreBar();
+    syncOutputGutter();
+  }
+
+  /** 跳转/查找落到未渲染的行时，先把结果扩展到那一行。 */
+  function ensureRendered(lineIndex) {
+    if (!state.totalLines || lineIndex < state.renderedLines) return false;
+
+    var target = Math.min(state.totalLines, lineIndex + 1);
+    var chunkEnd = Math.min(
+      state.totalLines,
+      Math.max(target, state.renderedLines + RENDER_CHUNK)
+    );
+
+    appendRenderRange(state.renderedLines, chunkEnd);
+    return true;
+  }
+
+  function updateRenderMoreBar() {
+    var total = state.totalLines;
+    var shown = state.renderedLines;
+
+    if (!els.renderMore) return;
+
+    if (state.view === 'tree' || total <= shown) {
+      els.renderMore.hidden = true;
+      return;
+    }
+
+    els.renderMore.hidden = false;
+    els.renderMoreText.textContent =
+      '已渲染 ' + shown.toLocaleString('zh-CN') + ' / ' +
+      total.toLocaleString('zh-CN') + ' 行';
   }
 
   function updateOutputMeta() {
@@ -1803,11 +2524,17 @@
     };
 
     var parts = [state.stale ? '输入已修改' : labels[state.mode] || '结果'];
-    parts.push(state.output.split('\n').length + ' 行');
+    parts.push((foldState.lineCount || state.output.split('\n').length) + ' 行');
     parts.push(formatBytes(byteLength(state.output)));
-    if ((state.mode === 'pretty' || state.mode === 'minify') && state.output.length > MAX_HIGHLIGHT) {
-      parts.push('层级纯色模式');
+
+    if ((state.mode === 'pretty' || state.mode === 'minify')) {
+      if (state.output.length > MAX_HIGHLIGHT) {
+        parts.push('层级纯色模式');
+      } else if (foldState.lineCount > MAX_RICH_LINES) {
+        parts.push('大内容模式 · 仅按行着色');
+      }
     }
+
     els.outputMeta.textContent = parts.join(' · ');
   }
 
@@ -1943,12 +2670,13 @@
     els.outputScroll.hidden = isTree;
     els.outputGutterWrap.hidden = isTree;
     els.treeView.hidden = !isTree;
-    els.expandBtn.hidden = !isTree;
-    els.collapseBtn.hidden = !isTree;
 
     if (isTree && state.treeDirty) {
       renderTree(state.node);
     }
+
+    updateFoldButtons();
+    updateRenderMoreBar();
 
     if (!isTree) {
       window.requestAnimationFrame(syncOutputGutter);
@@ -1969,6 +2697,18 @@
     state.errorLine = null;
     els.outputBody.hidden = true;
     els.outputBody.scrollTop = 0;
+    els.outputBody.classList.remove('has-folds');
+    els.output.innerHTML = '';
+    els.outputGutter.innerHTML = '';
+    resetFoldState();
+
+    state.renderedLines = 0;
+    state.totalLines = 0;
+    state.gutterRows = 0;
+    state.htmlLines = null;
+    state.lineDepths = null;
+
+    if (els.renderMore) els.renderMore.hidden = true;
     els.emptyState.hidden = false;
     els.errorState.hidden = true;
     els.gotoErrorBtn.hidden = true;
@@ -2841,6 +3581,12 @@
     });
 
     window.addEventListener('resize', deckResize);
+
+    /* 视图隐藏期间容器宽度为 0，切回 JSON 时重新计算左右分栏 */
+    document.addEventListener('toolbox:viewchange', function (event) {
+      if (event.detail && event.detail.view === 'json') deckResize();
+    });
+
     deckResize();
   }
 
@@ -2994,6 +3740,17 @@
     els.input.addEventListener('click', handleInputFindClick);
     els.outputScroll.addEventListener('click', handleOutputFindClick);
 
+    els.outputGutter.addEventListener('click', function (event) {
+      var button = event.target && event.target.closest
+        ? event.target.closest('.fold-btn')
+        : null;
+
+      if (!button) return;
+
+      event.preventDefault();
+      toggleFold(button.getAttribute('data-fold-key'));
+    });
+
     els.themeToggle.addEventListener('click', toggleTheme);
 
     els.indentSelect.addEventListener('change', function () {
@@ -3044,13 +3801,29 @@
     });
 
     els.expandBtn.addEventListener('click', function () {
-      var nodes = els.treeView.querySelectorAll('details');
-      for (var i = 0; i < nodes.length; i++) nodes[i].open = true;
+      if (state.view === 'tree') {
+        var nodes = els.treeView.querySelectorAll('details');
+        for (var i = 0; i < nodes.length; i++) nodes[i].open = true;
+        return;
+      }
+
+      unfoldAll();
     });
 
+    if (els.renderMoreBtn) {
+      els.renderMoreBtn.addEventListener('click', function () {
+        appendRenderRange(state.renderedLines, state.renderedLines + RENDER_CHUNK);
+      });
+    }
+
     els.collapseBtn.addEventListener('click', function () {
-      var nodes = els.treeView.querySelectorAll('details');
-      for (var i = 0; i < nodes.length; i++) nodes[i].open = false;
+      if (state.view === 'tree') {
+        var nodes = els.treeView.querySelectorAll('details');
+        for (var i = 0; i < nodes.length; i++) nodes[i].open = false;
+        return;
+      }
+
+      foldAll();
     });
 
     els.gotoErrorBtn.addEventListener('click', function () {
@@ -3068,6 +3841,9 @@
 
     document.addEventListener('keydown', function (event) {
       if (event.isComposing) return;
+
+      /* 仅在 JSON 视图激活时接管快捷键，避免劫持其它工具和浏览器默认行为 */
+      if (window.Toolbox && !window.Toolbox.isActive('json')) return;
 
       var modifier = event.ctrlKey || event.metaKey;
       var activeElement = document.activeElement;

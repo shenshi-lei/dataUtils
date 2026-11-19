@@ -888,6 +888,9 @@ html[data-theme="dark"] .tab.is-active {
 #outputGutter > div {
   position: relative;
   color: var(--depth-color, var(--faint));
+}
+
+#outputGutter .gutter-num {
   opacity: 0.62;
 }
 
@@ -900,8 +903,45 @@ html[data-theme="dark"] .tab.is-active {
   height: 12px;
   border-radius: 2px;
   background: var(--depth-color, transparent);
-  opacity: 0.9;
+  opacity: 0.56;
 }
+
+#outputGutter .fold-btn {
+  position: absolute;
+  left: 10px;
+  top: 3px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 16px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.6;
+  cursor: pointer;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+#outputGutter .fold-btn::before { content: "−"; }
+
+#outputGutter .fold-btn[data-collapsed="1"]::before { content: "+"; }
+
+#outputGutter .fold-btn:hover,
+#outputGutter .fold-btn[data-collapsed="1"] {
+  opacity: 1;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+.gutter-inner > div.is-folded { display: none; }
 
 #input {
   position: relative;
@@ -1030,11 +1070,73 @@ html[data-theme="dark"] .tab.is-active {
 }
 
 .output-body {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
   --gutter-width: 52px;
+}
+
+/* 有可折叠节点时行号栏让出一个折叠按钮的位置 */
+.output-body.has-folds { --gutter-width: 66px; }
+
+/* 超大内容分段渲染时的底部提示条 */
+.render-more {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-soft) 92%, transparent);
+  backdrop-filter: blur(4px);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.render-more[hidden] { display: none; }
+
+.render-more .btn { padding: 3px 10px; font-size: 11.5px; }
+
+/* 逐行容器：折叠以整行为单位，行内容与行号栏一一对应 */
+.ol {
+  display: block;
+  min-height: 22px;
+}
+
+.ol.is-folded { display: none; }
+
+.fold-chip {
+  display: none;
+  margin-left: 7px;
+  padding: 0 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  background: var(--panel-soft);
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 16px;
+  vertical-align: 1px;
+  white-space: pre;
+  user-select: none;
+  cursor: pointer;
+}
+
+.fold-chip.is-visible { display: inline-block; }
+
+/* 摘要文字由 CSS 生成：折叠切换只改 class，不写 DOM 文本 */
+.fold-chip::before { content: attr(data-summary); }
+
+.fold-chip:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .output-scroll {

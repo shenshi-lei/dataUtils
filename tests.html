@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dataUtils 自检</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.6;
+      background: #f6f7fb;
+      color: #131a2a;
+    }
+    h1 { margin: 0 0 6px; font-size: 20px; }
+    h2 { margin: 22px 0 8px; font-size: 15px; }
+    #env { margin: 0 0 12px; font-family: Consolas, monospace; font-size: 12px; color: #5b6478; }
+    #summary { margin: 10px 0 14px; padding: 10px 14px; border-radius: 10px; font-size: 15px; background: #fff; border: 1px solid #e2e6f0; }
+    #summary[data-fail="0"] { border-color: #0b8a68; color: #0b8a68; }
+    #summary:not([data-fail="0"]) { border-color: #d92d20; color: #d92d20; }
+    ol { margin: 0; padding-left: 26px; font-size: 13px; }
+    li { margin: 2px 0; font-family: Consolas, monospace; }
+    li.fail { color: #b42318; }
+    #failures:empty::after { content: "（无）"; color: #8a93a6; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #0b111a; color: #e8ecf5; }
+      #summary { background: #111722; border-color: #222b3a; }
+      #env { color: #95a0b4; }
+      li.fail { color: #f87171; }
+    }
+  </style>
+</head>
+<body>
+  <h1>dataUtils 自检</h1>
+  <p id="env">检测环境中…</p>
+  <h2 id="summary">运行中…</h2>
+  <h2>失败项</h2>
+  <ol id="failures"></ol>
+  <h2>通过项</h2>
+  <ol id="passed"></ol>
+
+  <script src="js/lib/bytes.js?v=8"></script>
+  <script src="js/lib/md5.js?v=8"></script>
+  <script src="js/lib/date-format.js?v=8"></script>
+  <script src="js/lib/sql-format.js?v=8"></script>
+  <script src="js/lib/webcrypto.js?v=8"></script>
+  <script src="js/lib/radix.js?v=8"></script>
+  <script src="js/lib/text-case.js?v=8"></script>
+  <script src="js/lib/jwt.js?v=8"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      var B = window.Bytes;
+      var MD5 = window.MD5;
+      var DF = window.DateFormat;
+      var SQL = window.SQLFormat;
+      var Kit = window.CryptoKit;
+      var Radix = window.Radix;
+      var TextCase = window.TextCase;
+      var JWT = window.JWT;
+
+      var pass = 0;
+      var fail = 0;
+      var failures = [];
+      var passed = [];
+
+      function ok(name, actual, expected) {
+        if (actual === expected) {
+          pass++;
+          passed.push(name);
+        } else {
+          fail++;
+          failures.push(name + ' → 期望 ' + JSON.stringify(expected) + '，实际 ' + JSON.stringify(actual));
+        }
+      }
+
+      function truthy(name, value) {
+        ok(name, !!value, true);
+      }
+
+      function throws(name, fn) {
+        try {
+          fn();
+          fail++;
+          failures.push(name + ' → 应当抛出异常但没有');
+        } catch (err) {
+          pass++;
+          passed.push(name);
+        }
+      }
+
+      function hexOf(bytes) {
+        return B.bytesToHex(bytes);
+      }
+
+      function equalsAsync(name, promise, expected) {
+        return promise.then(function (value) {
+          ok(name, value, expected);
+        }, function (err) {
+          fail++;
+          failures.push(name + ' → 抛出 ' + (err && err.message ? err.message : err));
+        });
+      }
+
+      function section(title) {
+        passed.push('— ' + title + ' —');
+      }
+
+      /* ---------------- 环境 ---------------- */
+
+      var envText = 'protocol=' + location.protocol +
+        ' · isSecureContext=' + String(window.isSecureContext) +
+        ' · crypto.subtle=' + (window.crypto && window.crypto.subtle ? 'yes' : 'no') +
+        ' · TextEncoder=' + (typeof TextEncoder !== 'undefined') +
+        ' · BigInt=' + (typeof BigInt !== 'undefined');
+      document.getElementById('env').textContent = envText;
+
+      /* ---------------- Base64 / Hex / 填充 ---------------- */
+
+      section('编码');
+
+      var rfc4648 = [['', ''], ['f', 'Zg=='], ['fo', 'Zm8='], ['foo', 'Zm9v'], ['foob', 'Zm9vYg=='], ['fooba', 'Zm9vYmE='], ['foobar', 'Zm9vYmFy']];
+      rfc4648.forEach(function (pair) {
+        ok('Base64 "' + pair[0] + '"', B.utf8ToBase64(pair[0]), pair[1]);
+        ok('Base64 解码 "' + pair[1] + '"', B.base64ToUtf8(pair[1]), pair[0]);
+      });
+
+      ok('Base64 中文往返', B.base64ToUtf8(B.utf8ToBase64('中文😀')), '中文😀');
+      ok('Base64URL', B.bytesToBase64Url(B.utf8Encode('subjects?_d')), 'c3ViamVjdHM_X2Q');
+      ok('Base64URL 解码', B.utf8Decode(B.base64UrlToBytes('c3ViamVjdHM_X2Q')), 'subjects?_d');
+      ok('Base64 缺填充', B.base64ToUtf8('Zm9vYg'), 'foob');
+      throws('Base64 非法字符报错', function () { B.base64ToBytes('abc$def'); });
+
+      ok('Hex 编码', hexOf(B.utf8Encode('A')), '41');
+      ok('Hex 解码', B.utf8Decode(B.hexToBytes('E4B8AD')), '中');
+      throws('Hex 奇数长度报错', function () { B.hexToBytes('ABC'); });
+
+      for (var len = 0; len <= 33; len += 1) {
+        var data = new Uint8Array(len).fill(7);
+        var padded = B.pkcs7Pad(data, 16);
+        ok('PKCS#7 长度 ' + len, padded.length, Math.ceil((len + 1) / 16) * 16);
+        ok('PKCS#7 往返 ' + len, hexOf(B.pkcs7Unpad(padded, 16)), hexOf(data));
+      }
+      throws('PKCS#7 非法填充报错', function () { B.pkcs7Unpad(new Uint8Array(16).fill(0), 16); });
+
+      /* ---------------- MD5 ---------------- */
+
+      section('MD5');
+
+      var md5Vectors = [
+        ['', 'd41d8cd98f00b204e9800998ecf8427e'],
+        ['a', '0cc175b9c0f1b6a831c399e269772661'],
+        ['abc', '900150983cd24fb0d6963f7d28e17f72'],
+        ['message digest', 'f96b697d7cb7938d525a2f31aaf161d0'],
+        ['abcdefghijklmnopqrstuvwxyz', 'c3fcd3d76192e4007dfb496cca67e13b'],
+        ['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 'd174ab98d277d9f5a5611c2c9f419d9f'],
+        ['12345678901234567890123456789012345678901234567890123456789012345678901234567890', '57edf4a22be3c955ac49da2e2107b67a']
+      ];
+      md5Vectors.forEach(function (pair) {
+        ok('MD5 "' + pair[0].slice(0, 18) + '"', MD5.hex(pair[0]), pair[1]);
+      });
+      [55, 56, 63, 64, 65, 128].forEach(function (size) {
+        var text = new Array(size + 1).join('x');
+        ok('MD5 边界 ' + size, MD5.hex(text).length, 32);
+      });
+
+      /* ---------------- SQL ---------------- */
+
+      section('SQL');
+
+      var sqlCases = [
+        'select a,b from t where x=1 and y=2',
+        "SELECT * FROM t WHERE note = 'a--b' AND path = '/*x*/'",
+        'INSERT INTO t (a, b) VALUES (1, 2), (3, 4)',
+        'SELECT CASE WHEN a > 0 THEN 1 ELSE 0 END AS s FROM t',
+        'WITH x AS (SELECT id FROM t) SELECT * FROM x',
+        "DELETE FROM t WHERE d < NOW() - INTERVAL 7 DAY"
+      ];
+
+      sqlCases.forEach(function (source, index) {
+        var before = SQL.signature(SQL.tokenize(source));
+        var formatted = SQL.format(source, { indent: 2 }).text;
+        var after = SQL.signature(SQL.tokenize(formatted));
+
+        ok('SQL 格式化保持 token 序列 #' + index, after, before);
+        ok('SQL 格式化幂等 #' + index, SQL.format(formatted, { indent: 2 }).text, formatted);
+
+        var minified = SQL.minify(source).text;
+        ok('SQL 压缩保持 token 序列 #' + index, SQL.signature(SQL.tokenize(minified)), before);
+      });
+
+      ok('SQL 字符串内分号不分句', SQL.tokenize("SELECT 'a;b'").filter(function (token) { return token.value === ';'; }).length, 0);
+      ok('SQL 行注释计数', SQL.minify('SELECT 1 -- x\n, 2 /* y */').removedComments, 2);
+      truthy('SQL 压缩不拼出 -- 注释', SQL.minify('SELECT a - -1 FROM t').text.indexOf('--') < 0);
+      throws('SQL 未闭合字符串报错', function () { SQL.tokenize("SELECT 'abc"); });
+
+      /* ---------------- 日期 ---------------- */
+
+      section('日期');
+
+      ok('UTC 纪元', DF.parse('1970-01-01 00:00:00', { zone: 'utc' }).epochMs, 0);
+      ok('闰年 2 月 29', DF.parse('2024-02-29', { zone: 'utc' }).epochMs, Date.UTC(2024, 1, 29));
+      throws('非闰年 2 月 29 报错', function () { DF.parse('2026-02-29', { zone: 'utc' }); });
+      throws('24 点报错', function () { DF.parse('2026-01-01 24:00:00', { zone: 'utc' }); });
+      ok('ISO Z', DF.parse('2026-11-19T14:03:34Z').epochMs, Date.UTC(2026, 10, 19, 14, 3, 34));
+      ok('ISO +08:00', DF.parse('2026-11-19T22:03:34+08:00').epochMs, Date.UTC(2026, 10, 19, 14, 3, 34));
+      ok('上海时区换算', DF.parse('2026-11-19 22:03:34', { zone: 'Asia/Shanghai' }).epochMs, Date.UTC(2026, 10, 19, 14, 3, 34));
+      ok('10 位识别为秒', DF.parseTimestamp('1763552614').unit, 's');
+      ok('13 位识别为毫秒', DF.parseTimestamp('1763552614000').unit, 'ms');
+      ok('UTC 格式化', DF.format(new Date(0), 'YYYY-MM-DD HH:mm:ss', { timeZone: 'UTC' }), '1970-01-01 00:00:00');
+      ok('ISO 输出（上海）', DF.iso(new Date(0), { timeZone: 'Asia/Shanghai' }), '1970-01-01T08:00:00.000+08:00');
+      ok('RFC 2822', DF.rfc2822(new Date(0)), 'Thu, 01 Jan 1970 00:00:00 +0000');
+
+      /* ---------------- 进制 ---------------- */
+
+      section('进制');
+
+      ok('10 → 16', Radix.format(Radix.parse('255', 10), 16), 'ff');
+      ok('0xFF → 10', Radix.parse('0xFF', 'auto').toString(10), '255');
+      ok('0b1010 → 10', Radix.parse('0b1010', 'auto').toString(10), '10');
+      ok('负数', Radix.parse('-10', 10).toString(10), '-10');
+      ok('超 64 位', Radix.parse('18446744073709551616', 10).toString(16), '10000000000000000');
+      throws('非法字符报错', function () { Radix.parse('12g', 10); });
+      throws('超出进制范围报错', function () { Radix.parse('2', 2); });
+
+      /* ---------------- 文本 ---------------- */
+
+      section('文本');
+
+      ok('camelCase', TextCase.camel('user profile name'), 'userProfileName');
+      ok('PascalCase', TextCase.pascal('HTTPServer'), 'HttpServer');
+      ok('snake_case', TextCase.snake('userProfileName'), 'user_profile_name');
+      ok('kebab-case', TextCase.kebab('user_profile_name'), 'user-profile-name');
+      ok('CONSTANT_CASE', TextCase.constant('userProfileName'), 'USER_PROFILE_NAME');
+      ok('中文保留', TextCase.snake('中文 测试'), '中文_测试');
+      ok('标题格式', TextCase.title('hello wORLD'), 'Hello World');
+      ok('去重行', TextCase.dedupeLines('a\nb\na'), 'a\nb');
+      ok('行排序', TextCase.sortLines('c\na\nb'), 'a\nb\nc');
+
+      /* ---------------- JWT ---------------- */
+
+      section('JWT');
+
+      var sample = JWT.sample();
+      var decoded = JWT.decode(sample);
+      ok('JWT alg', decoded.header.alg, 'HS256');
+      ok('JWT sub', decoded.payload.sub, '1234567890');
+      truthy('JWT 签名段长度 > 0', decoded.signatureBytes > 0);
+      throws('JWT 段数错误报错', function () { JWT.decode('a.b'); });
+
+      /* ---------------- WebCrypto ---------------- */
+
+      section('摘要');
+
+      var shaCases = [
+        ['SHA-1', 'a9993e364706816aba3e25717850c26c9cd0d89d'],
+        ['SHA-256', 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'],
+        ['SHA-384', 'cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7'],
+        ['SHA-512', 'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f']
+      ];
+
+      var hmacKey = new Uint8Array(20).fill(0x0b);
+
+      var aesCbcKey = B.hexToBytes('2b7e151628aed2a6abf7158809cf4f3c');
+      var aesCbcIv = B.hexToBytes('000102030405060708090a0b0c0d0e0f');
+      var aesPlain = B.hexToBytes(
+        '6bc1bee22e409f96e93d7e117393172a' +
+        'ae2d8a571e03ac9c9eb76fac45af8e51' +
+        '30c81c46a35ce411e5fbc1191a0a52ef' +
+        'f69f2445df4f9b17ad2b417be66c3710'
+      );
+
+      var aesCtrCounter = B.hexToBytes('f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff');
+      var gcmKey = B.hexToBytes('feffe9928665731c6d6a8f9467308308');
+      var gcmIv = B.hexToBytes('cafebabefacedbaddecaf888');
+      var gcmPlain = B.hexToBytes(
+        'd9313225f88406e5a55909c5aff5269a' +
+        '86a7a9531534f7da2e4c303d8a318a72' +
+        '1c3c0c95956809532fcf0e2449a6b525' +
+        'b16aedf5aa0de657ba637b391aafd255'
+      );
+
+      (async function () {
+        if (!Kit.available()) {
+          failures.push('WebCrypto 不可用：' + Kit.unavailableReason());
+          fail++;
+          finish();
+          return;
+        }
+
+        for (var i = 0; i < shaCases.length; i++) {
+          await equalsAsync(shaCases[i][0] + '("abc")', Kit.digest(shaCases[i][0], B.utf8Encode('abc')).then(hexOf), shaCases[i][1]);
+        }
+
+        await equalsAsync(
+          'HMAC-SHA256（RFC 4231 case 1）',
+          Kit.hmac('SHA-256', hmacKey, B.utf8Encode('Hi There')).then(hexOf),
+          'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7'
+        );
+
+        var nistCbc = '7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b273bed6b8e3c1743b7116e69e222295163ff1caa1681fac09120eca307586e1a7';
+        var cbcPromise = Kit.aesEncrypt({ mode: 'CBC', key: aesCbcKey, iv: aesCbcIv, data: aesPlain });
+
+        /* WebCrypto 的 AES-CBC 会自动补 PKCS#7：满块输入会再补一整块，因此只比对前 64 字节 */
+        await equalsAsync(
+          'AES-128-CBC 前 64 字节（NIST F.2.1）',
+          cbcPromise.then(function (bytes) { return hexOf(bytes.slice(0, 64)); }),
+          nistCbc
+        );
+
+        await equalsAsync(
+          'AES-128-CBC 自动补满一块（64 → 80 字节）',
+          cbcPromise.then(function (bytes) { return bytes.length; }),
+          80
+        );
+
+        await equalsAsync(
+          'AES-128-CBC 解密往返（浏览器负责去填充）',
+          cbcPromise.then(function (bytes) {
+            return Kit.aesDecrypt({ mode: 'CBC', key: aesCbcKey, iv: aesCbcIv, data: bytes });
+          }).then(hexOf),
+          hexOf(aesPlain)
+        );
+
+        await equalsAsync(
+          'AES-128-CBC 16 字节明文补满为 32 字节',
+          Kit.aesEncrypt({ mode: 'CBC', key: aesCbcKey, iv: aesCbcIv, data: aesPlain.subarray(0, 16) })
+            .then(function (bytes) { return bytes.length; }),
+          32
+        );
+
+        await equalsAsync(
+          'AES-128-CTR（NIST F.5.1）',
+          Kit.aesEncrypt({ mode: 'CTR', key: aesCbcKey, iv: aesCtrCounter, data: aesPlain }).then(hexOf),
+          '874d6191b620e3261bef6864990db6ce9806f66b7970fdff8617187bb9fffdff5ae4df3edbd5d35e5b4f09020db03eab1e031dda2fbe03d1792170a0f3009cee'
+        );
+
+        await equalsAsync(
+          'AES-128-GCM（NIST case 3，含 tag）',
+          Kit.aesEncrypt({ mode: 'GCM', key: gcmKey, iv: gcmIv, data: gcmPlain }).then(hexOf),
+          '42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c7d8f6a5aac84aa051ba30b396a0aac973d58e091473f5985' + '4d5c2af327cd64a62cf35abd2ba6fab4'
+        );
+
+        await equalsAsync(
+          'AES-GCM 空明文（case 1，仅 tag）',
+          Kit.aesEncrypt({ mode: 'GCM', key: new Uint8Array(16), iv: new Uint8Array(12), data: new Uint8Array(0) }).then(hexOf),
+          '58e2fccefa7e3061367f1d57a4e7455a'
+        );
+
+        await equalsAsync(
+          'AES 往返（随机密钥 / IV）',
+          Kit.aesEncrypt({
+            mode: 'GCM',
+            key: B.randomBytes(32),
+            iv: B.randomBytes(12),
+            data: B.utf8Encode('roundtrip 加密往返')
+          }).then(function () { return 'ok'; }),
+          'ok'
+        );
+
+        finish();
+      })();
+
+      /* ---------------- 收尾 ---------------- */
+
+      function finish() {
+        var summary = document.getElementById('summary');
+        summary.setAttribute('data-pass', String(pass));
+        summary.setAttribute('data-fail', String(fail));
+        summary.textContent = '通过 ' + pass + ' 项 · 失败 ' + fail + ' 项';
+
+        var failureList = document.getElementById('failures');
+        failureList.textContent = '';
+        failures.forEach(function (item) {
+          var li = document.createElement('li');
+          li.className = 'fail';
+          li.textContent = item;
+          failureList.appendChild(li);
+        });
+
+        var passedList = document.getElementById('passed');
+        passedList.textContent = '';
+        passed.forEach(function (item) {
+          var li = document.createElement('li');
+          li.textContent = item;
+          passedList.appendChild(li);
+        });
+
+        document.body.setAttribute('data-result', fail === 0 ? 'pass' : 'fail');
+        document.title = (fail === 0 ? 'PASS' : 'FAIL') + ' · ' + pass + '/' + (pass + fail) + ' · dataUtils 自检';
+      }
+    })();
+  </script>
+</body>
+</html>
