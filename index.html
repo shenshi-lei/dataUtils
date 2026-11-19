@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="轻量、离线的 JSON 格式化工具：格式化、压缩、语法校验、树形查看、转义与键名排序，数据不会上传。">
+  <meta name="color-scheme" content="light dark">
+  <title>JSON 格式化 · 美化 / 压缩 / 校验</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%235b5bd6'/%3E%3Ctext x='32' y='43' font-family='monospace' font-size='32' font-weight='700' fill='white' text-anchor='middle'%3E%7B%7D%3C/text%3E%3C/svg%3E">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('jsonfmt:theme');
+        var theme = saved ? JSON.parse(saved) : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : 'light');
+      } catch (e) { /* 忽略存储异常 */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="css/style.css?v=5">
+</head>
+<body>
+  <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><path d="M4 14h6v6"/><path d="m10 20-7-7"/><path d="M20 10h-6V4"/><path d="m14 4 7 7"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></symbol>
+    <symbol id="i-collapse" viewBox="0 0 24 24"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-replace" viewBox="0 0 24 24"><path d="M3 7h13"/><polyline points="13 4 16 7 13 10"/><path d="M21 17H8"/><polyline points="11 14 8 17 11 20"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  </svg>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">{ }</div>
+        <div class="brand-text">
+          <h1>JSON 格式化</h1>
+          <p>格式化 · 压缩 · 校验 · 树形查看</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="privacy-note"><svg class="icon"><use href="#i-lock"></use></svg>本地处理，数据不会上传</span>
+        <button class="icon-btn" id="themeToggle" type="button" title="切换主题" aria-label="切换明暗主题">
+          <svg class="icon icon-moon"><use href="#i-moon"></use></svg>
+          <svg class="icon icon-sun"><use href="#i-sun"></use></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="格式化设置">
+      <div class="toolbar-options">
+        <label class="field" for="indentSelect">
+          <span class="field-label">缩进</span>
+          <select id="indentSelect">
+            <option value="2">2 个空格</option>
+            <option value="4">4 个空格</option>
+            <option value="tab">Tab</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="sortKeys"> 键名排序</label>
+        <label class="check"><input type="checkbox" id="autoFormat"> 自动格式化</label>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" id="undoBtn" type="button" title="撤销上一次文本修改 (Ctrl+Z)" disabled>
+          <svg class="icon"><use href="#i-undo"></use></svg>撤销
+        </button>
+        <button class="btn btn-ghost" id="unescapeBtn" type="button" title="将 \n、\&quot; 等转义还原为字符">去转义</button>
+        <button class="btn btn-ghost" id="escapeBtn" type="button" title="把输入文本转为 JSON 字符串字面量">转义</button>
+        <button class="btn btn-ghost" id="validateBtn" type="button" title="仅检查语法，不修改结果">
+          <svg class="icon"><use href="#i-shield"></use></svg>校验
+        </button>
+        <button class="btn btn-ghost" id="minifyBtn" type="button" title="Ctrl + Shift + M">
+          <svg class="icon"><use href="#i-shrink"></use></svg>压缩
+        </button>
+        <button class="btn btn-primary" id="formatBtn" type="button" title="Ctrl + Enter">
+          <svg class="icon"><use href="#i-sparkles"></use></svg>格式化
+        </button>
+      </div>
+    </section>
+
+    <main class="workspace" id="workspace">
+      <section class="panel" aria-label="JSON 输入">
+        <header class="panel-head">
+          <div class="panel-title">
+            <span class="panel-dot input-dot" aria-hidden="true"></span>
+            输入
+            <span class="badge" id="inputMeta">0 字符</span>
+          </div>
+          <div class="panel-actions">
+            <button class="mini mini-find" id="findToggle" type="button" title="查找替换 (Ctrl+F)" aria-label="查找替换" aria-expanded="false" aria-controls="findBar">
+              <svg class="icon"><use href="#i-search"></use></svg>查找
+            </button>
+            <button class="mini" id="uploadBtn" type="button" title="导入 .json 文件">
+              <svg class="icon"><use href="#i-upload"></use></svg>导入
+            </button>
+            <input type="file" id="fileInput" accept=".json,.txt,application/json,text/plain" hidden>
+            <button class="mini" id="pasteBtn" type="button" title="从剪贴板粘贴">
+              <svg class="icon"><use href="#i-copy"></use></svg>粘贴
+            </button>
+            <button class="mini" id="sampleBtn" type="button" title="载入示例 JSON">
+              <svg class="icon"><use href="#i-file"></use></svg>示例
+            </button>
+            <button class="mini mini-danger" id="clearBtn" type="button" title="清空输入与结果">
+              <svg class="icon"><use href="#i-trash"></use></svg>清空
+            </button>
+          </div>
+        </header>
+        <div class="find-bar" id="findBar" hidden>
+          <div class="find-row">
+            <div class="find-field">
+              <svg class="icon find-field-icon" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input class="find-input" id="findInput" type="text" placeholder="查找内容" autocomplete="off" spellcheck="false" aria-label="查找内容">
+              <span class="find-count" id="findCount" aria-live="polite" hidden></span>
+            </div>
+            <button class="find-opt" id="findCase" type="button" aria-pressed="false" title="区分大小写" aria-label="区分大小写">Aa</button>
+            <button class="find-opt" id="findRegex" type="button" aria-pressed="false" title="使用正则表达式" aria-label="使用正则表达式">.*</button>
+            <button class="find-nav" id="findPrev" type="button" title="上一个匹配 (Shift+Enter)" aria-label="上一个匹配" disabled>
+              <svg class="icon"><use href="#i-chevron-left"></use></svg>
+            </button>
+            <button class="find-nav" id="findNext" type="button" title="下一个匹配 (Enter)" aria-label="下一个匹配" disabled>
+              <svg class="icon"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button class="find-nav" id="findClose" type="button" title="关闭查找 (Esc)" aria-label="关闭查找">
+              <svg class="icon"><use href="#i-close"></use></svg>
+            </button>
+          </div>
+          <div class="find-row">
+            <div class="find-field">
+              <svg class="icon find-field-icon" aria-hidden="true"><use href="#i-replace"></use></svg>
+              <input class="find-input" id="replaceInput" type="text" placeholder="替换为（留空即删除）" autocomplete="off" spellcheck="false" aria-label="替换内容">
+            </div>
+            <button class="find-action" id="replaceBtn" type="button" title="替换当前匹配 (Enter)" disabled>替换</button>
+            <button class="find-action" id="replaceAllBtn" type="button" title="替换全部匹配" disabled>全部替换</button>
+          </div>
+        </div>
+        <div class="editor" id="dropZone">
+          <div class="gutter" aria-hidden="true"><div class="gutter-inner" id="inputGutter"></div></div>
+          <textarea id="input" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off" placeholder='在此粘贴或输入 JSON，例如 {"hello": "world"}' aria-label="JSON 输入框" title="查找时点击命中所在行可联动右侧；点击括号可强调其闭合范围"></textarea>
+          <div class="find-layer" id="findLayer" aria-hidden="true" hidden><div class="find-layer-inner" id="findLayerInner"></div></div>
+          <div class="drop-hint" id="dropHint">
+            <svg class="icon"><use href="#i-upload"></use></svg>
+            松开以导入 JSON 文件
+          </div>
+        </div>
+        <footer class="panel-foot">
+          <span id="inputHint">支持拖放 .json 文件</span>
+          <span class="cursor-pos" id="cursorPos">行 1，列 1</span>
+        </footer>
+      </section>
+
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="拖动调整左右面板宽度" tabindex="0" title="拖动调整宽度">
+        <span aria-hidden="true"></span>
+      </div>
+
+      <section class="panel" aria-label="格式化结果">
+        <header class="panel-head">
+          <div class="tabs" role="tablist" aria-label="结果视图">
+            <button class="tab is-active" id="textTab" data-view="text" type="button" role="tab" aria-selected="true">格式化</button>
+            <button class="tab" id="treeTab" data-view="tree" type="button" role="tab" aria-selected="false">树形视图</button>
+          </div>
+          <div class="panel-actions">
+            <button class="mini mini-find" id="findToggleRight" type="button" title="查找替换右侧结果 (Ctrl+F)" aria-label="查找替换右侧结果" aria-expanded="false" aria-controls="findBarRight">
+              <svg class="icon"><use href="#i-search"></use></svg>查找
+            </button>
+            <button class="mini" id="expandBtn" type="button" hidden title="展开全部节点">
+              <svg class="icon"><use href="#i-expand"></use></svg>展开全部
+            </button>
+            <button class="mini" id="collapseBtn" type="button" hidden title="收起全部节点">
+              <svg class="icon"><use href="#i-collapse"></use></svg>收起全部
+            </button>
+            <button class="mini" id="copyBtn" type="button" title="复制结果">
+              <svg class="icon"><use href="#i-copy"></use></svg>复制
+            </button>
+            <button class="mini" id="downloadBtn" type="button" title="下载为 .json 文件">
+              <svg class="icon"><use href="#i-download"></use></svg>下载
+            </button>
+          </div>
+        </header>
+        <div class="find-bar find-bar-right" id="findBarRight" hidden>
+          <div class="find-row">
+            <div class="find-field">
+              <svg class="icon find-field-icon" aria-hidden="true"><use href="#i-search"></use></svg>
+              <input class="find-input" id="findInputRight" type="text" placeholder="在结果中查找" autocomplete="off" spellcheck="false" aria-label="在结果中查找">
+              <span class="find-count" id="findCountRight" aria-live="polite" hidden></span>
+            </div>
+            <button class="find-opt" id="findCaseRight" type="button" aria-pressed="false" title="区分大小写" aria-label="区分大小写">Aa</button>
+            <button class="find-opt" id="findRegexRight" type="button" aria-pressed="false" title="使用正则表达式" aria-label="使用正则表达式">.*</button>
+            <button class="find-nav" id="findPrevRight" type="button" title="上一个匹配 (Shift+Enter)" aria-label="上一个匹配" disabled>
+              <svg class="icon"><use href="#i-chevron-left"></use></svg>
+            </button>
+            <button class="find-nav" id="findNextRight" type="button" title="下一个匹配 (Enter)" aria-label="下一个匹配" disabled>
+              <svg class="icon"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button class="find-nav" id="findCloseRight" type="button" title="关闭查找 (Esc)" aria-label="关闭查找">
+              <svg class="icon"><use href="#i-close"></use></svg>
+            </button>
+          </div>
+          <div class="find-row">
+            <div class="find-field">
+              <svg class="icon find-field-icon" aria-hidden="true"><use href="#i-replace"></use></svg>
+              <input class="find-input" id="replaceInputRight" type="text" placeholder="替换为（同步左侧）" autocomplete="off" spellcheck="false" aria-label="替换内容">
+            </div>
+            <button class="find-action" id="replaceBtnRight" type="button" title="替换当前匹配 (Enter)" disabled>替换</button>
+            <button class="find-action" id="replaceAllBtnRight" type="button" title="替换两侧全部匹配" disabled>全部替换</button>
+          </div>
+        </div>
+        <div class="output-wrap">
+          <div class="output-body" id="outputBody" hidden>
+            <div class="gutter" id="outputGutterWrap" aria-hidden="true"><div class="gutter-inner" id="outputGutter"></div></div>
+            <div class="output-scroll" id="outputScroll">
+              <div class="output-content" id="outputContent">
+                <pre class="code" id="outputPre" title="查找时点击命中所在行可联动左侧；点击括号可强调其闭合范围"><code id="output"></code></pre>
+                <div class="find-layer output-find-layer" id="outputFindLayer" aria-hidden="true" hidden><div class="find-layer-inner" id="outputFindLayerInner"></div></div>
+              </div>
+            </div>
+            <div class="tree-view" id="treeView" hidden></div>
+          </div>
+
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon"><svg class="icon"><use href="#i-braces"></use></svg></div>
+            <h2>格式化结果将在这里显示</h2>
+            <p>粘贴 JSON 后按 <kbd>Ctrl</kbd> + <kbd>Enter</kbd>，或把 <code>.json</code> 文件拖进左侧面板。</p>
+            <div class="empty-chips">
+              <span>语法高亮</span>
+              <span>树形浏览</span>
+              <span>键名排序</span>
+              <span>双侧查找</span>
+              <span>一键压缩</span>
+            </div>
+          </div>
+
+          <div class="error-state" id="errorState" hidden>
+            <div class="error-icon"><svg class="icon"><use href="#i-alert"></use></svg></div>
+            <h2>JSON 解析失败</h2>
+            <p class="error-message" id="errorMessage"></p>
+            <span class="error-loc" id="errorLoc"></span>
+            <pre class="error-snippet"><code id="errorSnippet"></code></pre>
+            <button class="btn btn-ghost btn-sm" id="gotoErrorBtn" type="button">定位到错误位置</button>
+          </div>
+        </div>
+        <footer class="panel-foot">
+          <span class="status status-neutral" id="status"><span class="status-dot" aria-hidden="true"></span><span id="statusText">等待输入</span></span>
+          <span class="output-meta" id="outputMeta"></span>
+        </footer>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <span class="shortcut-hint">快捷键</span>
+      <span class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd><span>格式化</span></span>
+      <span class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>M</kbd><span>压缩</span></span>
+      <span class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>Z</kbd><span>撤销</span></span>
+      <span class="shortcut"><kbd>Ctrl</kbd><span>+</span><kbd>F</kbd><span>双侧查找</span></span>
+      <span class="footer-sep" aria-hidden="true"></span>
+      <span>遵循 RFC 8259</span>
+      <span class="footer-sep" aria-hidden="true"></span>
+      <span>纯前端 · 离线可用</span>
+      <span class="footer-sep" aria-hidden="true"></span>
+      <span style="opacity:.75">v1.4 · 括号聚焦 / 撤销</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <svg class="icon toast-icon"><use href="#i-check"></use></svg>
+    <span id="toastText"></span>
+  </div>
+
+  <script src="js/json-tools.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
+</body>
+</html>
+
+
