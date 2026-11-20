@@ -15,11 +15,12 @@
   function build() {
     var state = { tab: 'number', lastOp: null };
 
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-type',
       title: '进制与文本',
-      desc: '任意进制大整数互转（BigInt 保精度），以及大小写、命名风格与行级文本整理。'
+      desc: '任意进制大整数互转（BigInt 保精度），以及大小写、命名风格与行级文本整理。',
+      search: true
     }));
 
     var tabRow = ui.el('div', 't-tabs-row');
@@ -66,6 +67,11 @@
     numberToolbar.appendChild(numberOptions);
 
     var numberActions = ui.el('div', 't-actions');
+    var numberSearch = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在转换结果中查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
     var clearNumber = ui.miniButton('清空', {
       icon: 'i-trash',
       danger: true,
@@ -75,6 +81,7 @@
         numberError.textContent = '';
       }
     });
+    numberActions.appendChild(numberSearch);
     numberActions.appendChild(clearNumber);
     numberToolbar.appendChild(numberActions);
     numberPanel.appendChild(numberToolbar);
@@ -162,6 +169,11 @@
     textToolbar.appendChild(textOptions);
 
     var textActions = ui.el('div', 't-actions');
+    textActions.appendChild(ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在输入 / 输出中查找替换 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    }));
     textActions.appendChild(ui.miniButton('还原', {
       icon: 'i-undo',
       onClick: function () {
@@ -204,6 +216,23 @@
     textCols.appendChild(textOutputCol);
     textPanel.appendChild(textCols);
     root.appendChild(textPanel);
+
+    /* ---------------- 查找 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      var isNumber = state.tab === 'number';
+
+      finder = window.Finder.attach(root, {
+        label: '进制与文本查找',
+        scope: isNumber ? '转换结果' : '输入 + 输出',
+        targets: isNumber ? [numberRows] : [textInput, textOutput]
+      });
+      return finder;
+    }
 
     /* ---------------- 进制逻辑 ---------------- */
 
@@ -293,6 +322,12 @@
 
       numberPanel.hidden = !isNumber;
       textPanel.hidden = isNumber;
+
+      /* 切换页签后丢弃旧的查找目标，下回重新绑定 */
+      if (finder) {
+        finder.hide();
+        finder = null;
+      }
     }
 
     numberTab.addEventListener('click', function () { setTab('number'); });
@@ -310,7 +345,13 @@
       else if (state.lastOp) applyText(state.lastOp);
     }
 
-    return { root: root, run: runPrimary };
+    return {
+      root: root,
+      run: runPrimary,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      }
+    };
   }
 
   var instance = null;
@@ -322,9 +363,16 @@
     desc: '任意进制大整数互转、命名风格与行级文本整理',
     icon: 'i-type',
     keywords: ['base', 'hex', 'radix', 'camel', 'snake', 'kebab', '进制', '命名'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '重新转换' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '重新转换' },
+      { keys: ['Ctrl', 'F'], label: '查找替换' }
+    ],
     run: function () {
       if (instance) instance.run();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();

@@ -75,6 +75,83 @@
 
   var MULTI_OPERATORS = ['->>', '!~*', '::', ':=', '=>', '<=', '>=', '<>', '!=', '||', '&&', '<<', '>>', '->', '!~', '~*'];
 
+  /* ---------------- 方言 ---------------- */
+
+  /* sql-dialects.js 与本文件互相独立加载，这里按需取，取不到就退回通用规则 */
+  function getDialects() {
+    if (typeof module === 'object' && module.exports) {
+      try {
+        return require('./sql-dialects.js');
+      } catch (err) {
+        return null;
+      }
+    }
+    var scope = typeof globalThis !== 'undefined' ? globalThis : this;
+    return scope.SQLDialects || null;
+  }
+
+  /**
+   * 把 options.dialect（id 或方言对象）解析成方言对象。
+   * 未指定时返回 null，表示使用「兼容所有方言」的宽松规则。
+   */
+  function dialectOf(options) {
+    var ref = options && options.dialect;
+    if (!ref) return null;
+
+    if (typeof ref === 'object') return ref;
+
+    var mod = getDialects();
+    if (!mod || typeof mod.byId !== 'function') return null;
+    return mod.byId(String(ref)) || null;
+  }
+
+  function dialectKeywords(dialect) {
+    if (!dialect || !dialect.keywords) return null;
+    if (!dialect.__keywordSet) {
+      dialect.__keywordSet = toSet(dialect.keywords);
+    }
+    return dialect.__keywordSet;
+  }
+
+  function allowsIdentChar(dialect, ch) {
+    if (!dialect) return ch === '"' || ch === '`';
+    var chars = dialect.identifierChars;
+    if (typeof chars === 'string' && chars.indexOf(ch) >= 0) return true;
+    if (dialect.quoteChar === ch) return true;
+    /* 标准 SQL 的双引号在任何方言里都是标识符 */
+    return ch === '"';
+  }
+
+  function allowsBracketIdent(dialect) {
+    if (!dialect) return true;
+    return dialect.quoteChar === '[' || dialect.quoteClose === ']';
+  }
+
+  function supportsHashComment(dialect) {
+    if (!dialect) return true;
+    return dialect.supportsHashComment !== false;
+  }
+
+  function supportsDollarQuote(dialect) {
+    if (!dialect) return true;
+    return dialect.supportsDollarQuote !== false;
+  }
+
+  /* 方言额外声明的多字符运算符并进运算符表，长的优先 */
+  function operatorsFor(dialect) {
+    if (!dialect || !dialect.operators) return MULTI_OPERATORS;
+
+    var extra = String(dialect.operators).split(/\s+/).filter(function (item) {
+      return item && MULTI_OPERATORS.indexOf(item) < 0;
+    });
+
+    if (!extra.length) return MULTI_OPERATORS;
+
+    return MULTI_OPERATORS.concat(extra).sort(function (a, b) {
+      return b.length - a.length;
+    });
+  }
+
   function toSet(text) {
     var map = Object.create(null);
     text.split(/\s+/).forEach(function (word) {
@@ -133,8 +210,13 @@
 
   /* ---------------- 词法分析 ---------------- */
 
-  function tokenize(sql) {
+  function tokenize(sql, options) {
+    var dialect = dialectOf(options);
     var text = String(sql === null || sql === undefined ? '' : sql);
+    var operators = operatorsFor(dialect);
+    var bracketIdent = allowsBracketIdent(dialect);
+    var hashComment = supportsHashComment(dialect);
+    var dollarQuote = supportsDollarQuote(dialect);
     var tokens = [];
     var index = 0;
     var line = 1;
@@ -232,7 +314,7 @@
       }
 
       /* MySQL # 注释：仅行首或后跟空白时生效，避免与 PostgreSQL 的 # 运算符冲突 */
-      if (ch === '#') {
+      if (ch === '#' && hashComment) {
         var beforeOnLine = text.slice(lineStart, index).replace(/\s+$/, '');
         var nextChar = text.charAt(index + 1);
         if (beforeOnLine === '' || nextChar === '' || nextChar === ' ' || nextChar === '\t') {
@@ -248,24 +330,24 @@
       /* 字符串 */
       if (ch === "'") {
         var stringRaw = readQuoted("'", true, 'string');
-        push('string', stringRaw, start, startLine, startColumn);
+        push('string', stringRaw, start, startLine, startColumn, { quote: "'" });
         continue;
       }
 
       /* 引号标识符 */
-      if (ch === '"') {
+      if (ch === '"' && allowsIdentChar(dialect, '"')) {
         var doubleRaw = readQuoted('"', true, 'ident');
-        push('ident', doubleRaw, start, startLine, startColumn);
+        push('ident', doubleRaw, start, startLine, startColumn, { quote: '"' });
         continue;
       }
 
-      if (ch === '`') {
+      if (ch === '`' && allowsIdentChar(dialect, '`')) {
         var backRaw = readQuoted('`', true, 'ident');
-        push('ident', backRaw, start, startLine, startColumn);
+        push('ident', backRaw, start, startLine, startColumn, { quote: '`' });
         continue;
       }
 
-      if (ch === '[') {
+      if (ch === '[' && bracketIdent) {
         var bracketStart = index;
         bump(1);
         var closed = false;
@@ -283,13 +365,15 @@
           bump(1);
         }
         if (!closed) fail(text, '方括号标识符未闭合（缺少 ]）', bracketStart);
-        push('ident', text.slice(bracketStart, index), start, startLine, startColumn);
+        push('ident', text.slice(bracketStart, index), start, startLine, startColumn, { quote: '[' });
         continue;
       }
 
       /* 美元引用字符串与 $1 参数 */
       if (ch === '$') {
-        var dollarMatch = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(text.slice(index));
+        var dollarMatch = dollarQuote
+          ? /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(text.slice(index))
+          : null;
 
         if (dollarMatch) {
           var delimiter = dollarMatch[0];
@@ -368,8 +452,8 @@
 
       /* 多字符运算符 */
       var matched = null;
-      for (var m = 0; m < MULTI_OPERATORS.length; m++) {
-        var operator = MULTI_OPERATORS[m];
+      for (var m = 0; m < operators.length; m++) {
+        var operator = operators[m];
         if (text.substr(index, operator.length) === operator) {
           matched = operator;
           break;
@@ -403,8 +487,9 @@
     return word;
   }
 
-  function casedValue(token, mode) {
-    if (token.type === 'word' && KEYWORDS[token.upper]) return applyCase(token.value, mode);
+  function casedValue(token, mode, keywordSet) {
+    var set = keywordSet || KEYWORDS;
+    if (token.type === 'word' && set[token.upper]) return applyCase(token.value, mode);
     return token.value;
   }
 
@@ -439,7 +524,9 @@
   function format(sql, options) {
     options = options || {};
 
-    var tokens = tokenize(sql);
+    var dialect = dialectOf(options);
+    var keywordSet = dialectKeywords(dialect) || KEYWORDS;
+    var tokens = tokenize(sql, options);
     var unit = indentUnit(options);
     var caseMode = options.keywordCase || 'upper';
     var commaBefore = options.commaPosition === 'before';
@@ -617,6 +704,12 @@
           return applyCase(tokens[i + offset].value, caseMode);
         }).join(' ');
 
+        /* 方言不支持这个短语时按普通单词处理，避免改错大小写 */
+        if (!phraseTokens.every(function (word) { return keywordSet[word]; })) {
+          append(casedValue(token, caseMode, keywordSet), needsSpace(previous, token));
+          continue;
+        }
+
         if (canBreak()) newline(baseIndent());
         append(phraseText, !!buffer);
 
@@ -631,7 +724,7 @@
         if (upper === 'CASE') {
           if (canBreak() && bufferIsClauseHead()) newline(baseIndent() + 1);
           cases.push({ indent: indent });
-          append(casedValue(token, caseMode), !!buffer);
+          append(casedValue(token, caseMode, keywordSet), !!buffer);
           continue;
         }
 
@@ -639,7 +732,7 @@
           if (canBreak()) {
             newline(cases.length ? cases[cases.length - 1].indent + 1 : baseIndent() + 1);
           }
-          append(applyCase(token.value, caseMode), !!buffer);
+          append(keywordSet[upper] ? applyCase(token.value, caseMode) : token.value, !!buffer);
           continue;
         }
 
@@ -662,7 +755,7 @@
           continue;
         }
 
-        append(casedValue(token, caseMode), needsSpace(previous, token));
+        append(casedValue(token, caseMode, keywordSet), needsSpace(previous, token));
         continue;
       }
 
@@ -681,7 +774,9 @@
   function minify(sql, options) {
     options = options || {};
 
-    var tokens = tokenize(sql);
+    var dialect = dialectOf(options);
+    var keywordSet = dialectKeywords(dialect) || KEYWORDS;
+    var tokens = tokenize(sql, options);
     var caseMode = options.keywordCase || 'keep';
     var removeComments = options.removeComments !== false;
     var removedComments = 0;
@@ -725,7 +820,7 @@
         continue;
       }
 
-      var text = token.type === 'word' ? casedValue(token, caseMode) : token.value;
+      var text = token.type === 'word' ? casedValue(token, caseMode, keywordSet) : token.value;
 
       if (needSpace(previous, token)) out += ' ';
 
@@ -753,11 +848,23 @@
       .join('|');
   }
 
+  /**
+   * 供 UI / 自检使用：某个方言下的关键字集合。
+   * 找不到方言时返回内置的通用表。
+   */
+  function keywordsFor(dialectId) {
+    var mod = getDialects();
+    var dialect = mod && typeof mod.byId === 'function' ? mod.byId(String(dialectId || '')) : null;
+    return dialectKeywords(dialect) || KEYWORDS;
+  }
+
   return {
     tokenize: tokenize,
     format: format,
     minify: minify,
     signature: signature,
+    keywordsFor: keywordsFor,
+    dialectOf: dialectOf,
     KEYWORDS: KEYWORDS
   };
 });

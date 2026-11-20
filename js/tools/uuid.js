@@ -60,11 +60,12 @@
   }
 
   function build() {
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-shuffle',
       title: 'UUID / 随机串',
-      desc: 'UUID v4、NanoID 风格随机串与随机密码，使用 crypto.getRandomValues 生成，不消耗可预测的 Math.random。'
+      desc: 'UUID v4、NanoID 风格随机串与随机密码，使用 crypto.getRandomValues 生成，不消耗可预测的 Math.random。',
+      search: true
     }));
 
     var toolbar = ui.el('div', 't-toolbar');
@@ -110,6 +111,13 @@
     toolbar.appendChild(options);
 
     var actions = ui.el('div', 't-actions');
+
+    var searchBtn = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在生成结果中查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
+
     var generateBtn = ui.el('button', 'btn btn-primary btn-sm');
     generateBtn.type = 'button';
     generateBtn.appendChild(ui.icon('i-sparkles'));
@@ -117,6 +125,7 @@
 
     var copyAllBtn = ui.miniButton('复制全部', { icon: 'i-copy' });
 
+    actions.appendChild(searchBtn);
     actions.appendChild(generateBtn);
     toolbar.appendChild(actions);
     root.appendChild(toolbar);
@@ -159,14 +168,27 @@
     var resultCol = ui.el('section', 't-col');
     resultCol.appendChild(ui.colHead('生成结果', { actions: [copyAllBtn] }));
     var resultBody = ui.el('div', 't-col-body');
-    var resultArea = ui.el('pre', 't-result is-empty', '点击「生成」开始');
-    resultBody.appendChild(resultArea);
+    var resultArea = ui.codeView({ language: 'text', placeholder: '点击「生成」开始' });
+    resultBody.appendChild(resultArea.root);
     var stats = ui.el('div', 't-stats');
     resultBody.appendChild(stats);
     resultCol.appendChild(resultBody);
     root.appendChild(resultCol);
 
     /* ---------------- 逻辑 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      finder = window.Finder.attach(root, {
+        label: '随机串查找',
+        scope: '生成结果',
+        targets: [resultArea.pre]
+      });
+      return finder;
+    }
 
     function currentType() {
       return typeSelect.value;
@@ -217,14 +239,14 @@
         }
       } catch (err) {
         errorText.textContent = err.message;
-        resultArea.textContent = '';
-        resultArea.classList.add('is-empty');
+        resultArea.setValue('');
+        resultArea.pre.classList.add('is-empty');
+        resultArea.pre.textContent = '（生成失败）';
         stats.textContent = '';
         return;
       }
 
-      resultArea.textContent = list.join('\n');
-      resultArea.classList.remove('is-empty');
+      resultArea.setValue(list.join('\n'));
 
       stats.textContent = '';
       stats.appendChild(ui.el('span', 't-stat', '共 ' + list.length + ' 条'));
@@ -258,8 +280,8 @@
     generateBtn.addEventListener('click', generate);
 
     copyAllBtn.addEventListener('click', function () {
-      var text = resultArea.textContent;
-      if (!text || resultArea.classList.contains('is-empty')) {
+      var text = resultArea.getValue();
+      if (!text) {
         ui.toast('还没有生成结果');
         return;
       }
@@ -270,7 +292,13 @@
 
     syncPanels();
 
-    return { root: root, generate: generate };
+    return {
+      root: root,
+      generate: generate,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      }
+    };
   }
 
   var instance = null;
@@ -282,9 +310,16 @@
     desc: 'UUID v4、NanoID 风格随机串与随机密码',
     icon: 'i-shuffle',
     keywords: ['uuid', 'guid', 'nanoid', 'random', 'password', '随机'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '重新生成' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '重新生成' },
+      { keys: ['Ctrl', 'F'], label: '查找' }
+    ],
     run: function () {
       if (instance) instance.generate();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();

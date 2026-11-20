@@ -89,6 +89,174 @@
     return node;
   }
 
+  /* ---------------- 撤销 / 重做 ---------------- */
+
+  /*
+   * 每个工具在 mount 时把自己的「主文本域」登记进来，页面右上角的
+   * 撤销 / 重做按钮与 Ctrl+Z / Ctrl+Y 都作用在它上面。
+   */
+  var historyTargets = Object.create(null);
+
+  /*
+   * 工具可能先自己 attach 了 history（为了拿 onChange 更新自己的按钮），
+   * 这里在它的 onChange 外面再挂一层，保证顶栏按钮始终同步。
+   */
+  function bindHistory(input) {
+    if (!input || !root.TextHistory) return null;
+
+    var history = root.TextHistory.of(input) || root.TextHistory.attach(input);
+
+    if (!history.__toolboxHooked) {
+      history.__toolboxHooked = true;
+      var original = history.onChange;
+
+      history.onChange = function (stack) {
+        if (typeof original === 'function') original(stack);
+        syncHistoryButtons();
+      };
+    }
+
+    return history;
+  }
+
+  function setHistoryTarget(id, input) {
+    if (!input) {
+      delete historyTargets[id];
+      syncHistoryButtons();
+      return null;
+    }
+
+    historyTargets[id] = input;
+
+    var history = bindHistory(input);
+    syncHistoryButtons();
+    return history;
+  }
+
+  setHistoryTarget.onChange = null;
+
+  function historyTarget(id) {
+    var key = id || active;
+    var direct = historyTargets[key];
+    if (direct && direct.isConnected) return direct;
+
+    /* 工具没登记时，兜底取当前视图里第一个可编辑文本域 */
+    var tool = tools[key];
+    var view = viewOf(tool);
+    if (!view) return null;
+
+    var candidates = view.querySelectorAll('textarea, input[type="text"], input[type="search"]');
+    for (var i = 0; i < candidates.length; i++) {
+      var node = candidates[i];
+      if (node.readOnly || node.offsetParent === null) continue;
+      return node;
+    }
+
+    return null;
+  }
+
+  function undoActive() {
+    var input = historyTarget();
+    var history = input && root.TextHistory ? root.TextHistory.of(input) : null;
+    if (!history) {
+      toast('当前页签没有可撤销的编辑');
+      return false;
+    }
+
+    if (!history.undo()) {
+      toast('已经退到最早的一步');
+      return false;
+    }
+
+    return true;
+  }
+
+  function redoActive() {
+    var input = historyTarget();
+    var history = input && root.TextHistory ? root.TextHistory.of(input) : null;
+    if (!history) return false;
+
+    if (!history.redo()) {
+      toast('没有可重做的操作');
+      return false;
+    }
+
+    return true;
+  }
+
+  function syncHistoryButtons() {
+    if (!dom.undoBtn) return;
+
+    var input = historyTarget();
+    var history = input && root.TextHistory ? root.TextHistory.of(input) : null;
+
+    var canUndo = !!(history && history.canUndo());
+    var canRedo = !!(history && history.canRedo());
+
+    dom.undoBtn.disabled = !canUndo;
+    dom.redoBtn.disabled = !canRedo;
+  }
+
+  /**
+   * 生成一对撤销 / 重做按钮。工具把它放进自己的标题栏时，
+   * 点到的永远是「这个工具登记的主文本域」。
+   * @param {HTMLElement} input 该工具的主文本域（可省略，回退到全局当前目标）
+   */
+  function historyButtons(input) {
+    var group = el('div', 'history-group');
+
+    var undoBtn = el('button', 'history-btn');
+    undoBtn.type = 'button';
+    undoBtn.title = '撤销 (Ctrl+Z)';
+    undoBtn.setAttribute('aria-label', '撤销');
+    undoBtn.appendChild(icon('i-undo'));
+    undoBtn.disabled = true;
+
+    var redoBtn = el('button', 'history-btn');
+    redoBtn.type = 'button';
+    redoBtn.title = '重做 (Ctrl+Y)';
+    redoBtn.setAttribute('aria-label', '重做');
+    redoBtn.appendChild(icon('i-redo'));
+    redoBtn.disabled = true;
+
+    function history() {
+      var node = input && input.isConnected ? input : historyTarget();
+      return node && root.TextHistory ? root.TextHistory.of(node) : null;
+    }
+
+    function sync() {
+      var stack = history();
+      undoBtn.disabled = !(stack && stack.canUndo());
+      redoBtn.disabled = !(stack && stack.canRedo());
+    }
+
+    undoBtn.addEventListener('click', function () {
+      var stack = history();
+      if (!stack) return;
+      if (!stack.undo()) toast('已经退到最早的一步');
+    });
+
+    redoBtn.addEventListener('click', function () {
+      var stack = history();
+      if (!stack) return;
+      if (!stack.redo()) toast('没有可重做的操作');
+    });
+
+    if (input && root.TextHistory) {
+      var attached = bindHistory(input);
+      if (attached) attached.onChange = function () { sync(); syncHistoryButtons(); };
+    }
+
+    /* 输入与撤销都会改变可用状态，用轻量轮询兜住所有入口 */
+    var timer = setInterval(sync, 400);
+    group.__stopSync = function () { clearInterval(timer); };
+
+    group.appendChild(undoBtn);
+    group.appendChild(redoBtn);
+
+    return { node: group, undoBtn: undoBtn, redoBtn: redoBtn, sync: sync };
+  }
+
   var SVG_NS = 'http://www.w3.org/2000/svg';
 
   function icon(id, className) {
@@ -178,12 +346,30 @@
 
     wrap.appendChild(left);
 
+    var right = el('div', 'view-head-actions');
+
     if (options.tag !== false) {
       var tag = el('span', 'view-tag');
       tag.appendChild(icon('i-lock'));
       tag.appendChild(document.createTextNode(options.tag || '本地计算'));
-      wrap.appendChild(tag);
+      right.appendChild(tag);
     }
+
+    /* 每个页签右上角都有一个「查找」，Ctrl+F 是同一个入口 */
+    if (options.search !== false) {
+      var findBtn = el('button', 'mini mini-find view-find-btn');
+      findBtn.type = 'button';
+      findBtn.title = '在当前页签查找 / 替换 (Ctrl+F)';
+      findBtn.setAttribute('aria-label', '在当前页签查找');
+      findBtn.appendChild(icon('i-search'));
+      findBtn.appendChild(document.createTextNode('查找'));
+      findBtn.addEventListener('click', function () {
+        globalFind();
+      });
+      right.appendChild(findBtn);
+    }
+
+    wrap.appendChild(right);
 
     return wrap;
   }
@@ -244,12 +430,84 @@
     return { label: label, input: input };
   }
 
+  /* 标签在左、控件在右 —— 与 JSON 工具栏的 .field 完全一致 */
   function field(labelText, control, hint) {
-    var group = el('div', 't-group');
+    var group = el('div', 't-group is-row');
     if (labelText) group.appendChild(el('span', 't-label', labelText));
     group.appendChild(control);
-    if (hint) group.appendChild(el('span', 't-hint', hint));
+
+    if (hint) {
+      group.title = hint;
+      var tip = el('span', 't-hint is-inline', hint);
+      group.appendChild(tip);
+    }
+
     return group;
+  }
+
+  /**
+   * 分段按钮组：替代「模式」下拉，把几个互斥选项做成并排按钮。
+   * @param {Array<{value:string,label:string,title?:string}>} items
+   * @param {{value?:string, onChange?:function(string):void, ariaLabel?:string}} options
+   */
+  function segmented(items, options) {
+    options = options || {};
+
+    var box = el('div', 'seg');
+    box.setAttribute('role', 'group');
+    if (options.ariaLabel) box.setAttribute('aria-label', options.ariaLabel);
+
+    var buttons = [];
+    var current = options.value || (items[0] && items[0].value);
+
+    items.forEach(function (item) {
+      var btn = el('button', 'seg-btn', item.label);
+      btn.type = 'button';
+      btn.setAttribute('data-value', item.value);
+      btn.setAttribute('aria-pressed', 'false');
+      if (item.title) btn.title = item.title;
+
+      btn.addEventListener('click', function () {
+        if (current === item.value) return;
+        current = item.value;
+        sync();
+        if (typeof options.onChange === 'function') options.onChange(item.value);
+      });
+
+      buttons.push(btn);
+      box.appendChild(btn);
+    });
+
+    function sync() {
+      buttons.forEach(function (btn) {
+        var on = btn.getAttribute('data-value') === current;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
+    var api = {
+      node: box,
+      buttons: buttons,
+      get value() { return current; },
+      set value(next) {
+        current = next;
+        sync();
+      },
+      set: function (next, silent) {
+        current = next;
+        sync();
+        if (!silent && typeof options.onChange === 'function') options.onChange(next);
+      },
+      disable: function (value, disabled) {
+        buttons.forEach(function (btn) {
+          if (btn.getAttribute('data-value') === value) btn.disabled = !!disabled;
+        });
+      }
+    };
+
+    sync();
+    return api;
   }
 
   function textarea(placeholder, options) {
@@ -308,6 +566,7 @@
       staticEl: def.staticEl || '',
       mount: typeof def.mount === 'function' ? def.mount : null,
       run: typeof def.run === 'function' ? def.run : null,
+      find: typeof def.find === 'function' ? def.find : null,
       show: typeof def.show === 'function' ? def.show : null,
       hide: typeof def.hide === 'function' ? def.hide : null,
       destroy: typeof def.destroy === 'function' ? def.destroy : null
@@ -387,9 +646,69 @@
       if (root.console && console.error) console.error('[toolbox] ' + tool.id + ' 挂载失败', error);
     }
 
+    /* 统一挂一组撤销 / 重做按钮：工具自己有就用它的，没有才注入 */
+    if (!tool.staticEl) ensureHistoryButtons(tool, section);
+
     dom.host.appendChild(section);
     roots[tool.id] = section;
     return section;
+  }
+
+  /**
+   * 工具自己没放撤销按钮时，把一组按钮塞进 .view-head 的右侧。
+   * 工具自己放了（视图里已经有 .history-group）则不再重复添加。
+   */
+  function injectHistoryButtons(tool, section) {
+    if (!root.TextHistory) return;
+    if (section.querySelector('.history-group')) return;
+
+    var headEl = section.querySelector('.view-head');
+    if (!headEl) return;
+
+    var actions = headEl.querySelector('.view-head-actions');
+    if (!actions) {
+      actions = el('div', 'view-head-actions');
+      headEl.appendChild(actions);
+    }
+
+    var pair = historyButtons(null);
+    var findBtn = actions.querySelector('.view-find-btn');
+
+    if (findBtn) actions.insertBefore(pair.node, findBtn);
+    else actions.appendChild(pair.node);
+
+    tool.__historyButtons = pair;
+  }
+
+  /* 工具挂载完之后再补按钮：此时视图里有没有自己的按钮已经能看出来了 */
+  function ensureHistoryButtons(tool, section) {
+    if (!root.TextHistory) return;
+    if (tool.staticEl) return;
+    if (tool.__historyButtons) return;
+
+    /* 工具自己提供了撤销按钮就沿用它的，只跟顶栏保持同步 */
+    var own = section.querySelector('.history-group');
+
+    if (own) {
+      var local = section.querySelector('.history-btn');
+      tool.__historyButtons = {
+        node: own,
+        sync: function () {
+          var input = historyTarget(tool.id);
+          var stack = input && root.TextHistory ? root.TextHistory.of(input) : null;
+          var buttons = own.querySelectorAll('.history-btn');
+
+          if (buttons[0]) buttons[0].disabled = !(stack && stack.canUndo());
+          if (buttons[1]) buttons[1].disabled = !(stack && stack.canRedo());
+
+          /* 工具自己也可能挂了 body 级的同步按钮，这里不重复处理 */
+          if (local) local.setAttribute('data-toolbox-sync', '1');
+        }
+      };
+      return;
+    }
+
+    injectHistoryButtons(tool, section);
   }
 
   function activate(id, options) {
@@ -426,8 +745,10 @@
       }
     }
 
-    updateNav();
-    updateChrome(tool);
+    if (tool.__historyButtons && tool.__historyButtons.sync) tool.__historyButtons.sync();
+
+    updateNav();    updateChrome(tool);
+    syncHistoryButtons();
 
     if (previous !== target || options.force) {
       storageSet('view', target);
@@ -548,6 +869,68 @@
     }
   }
 
+  /**
+   * 全局查找入口。
+   * 顺序：当前工具的 finder → 当前视图里的第一个文本域 → 没有可搜内容时提示。
+   * JSON 视图有自己的双侧查找，它会把 finder 设为 override，这里不会被调用。
+   */
+  function globalFind(options) {
+    options = options || {};
+
+    if (root.Finder && root.Finder.runOverride()) return true;
+
+    var tool = tools[active];
+    if (tool && typeof tool.find === 'function') {
+      try {
+        if (tool.find(options) !== false) return true;
+      } catch (error) {
+        if (root.console && console.error) console.error('[toolbox] find 失败', error);
+      }
+    }
+
+    /* 兜底：在激活视图里找第一个可见 textarea / input 挂一个临时查找条 */
+    var view = viewOf(tool);
+    var host = null;
+
+    if (view) {
+      var candidates = view.querySelectorAll('textarea, input[type="text"], input[type="search"]');
+      for (var i = 0; i < candidates.length; i++) {
+        var node = candidates[i];
+        if (node.offsetParent === null || node.readOnly) continue;
+        host = node;
+        break;
+      }
+    }
+
+    if (!host) {
+      toast('当前页签没有可搜索的文本');
+      return false;
+    }
+
+    if (root.Finder) {
+      var controller = root.Finder.attach(view || byId('content'), {
+        targets: [host],
+        label: tool ? tool.title : '查找'
+      });
+      controller.show(options.replace);
+      return true;
+    }
+
+    return false;
+  }
+
+  function onFindShortcut(event) {
+    if (event.isComposing) return;
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey) return;
+    if (event.key !== 'f' && event.key !== 'F' && event.key !== 'h' && event.key !== 'H') return;
+
+    /* JSON 视图自己处理双侧查找 */
+    if (active === 'json') return;
+
+    event.preventDefault();
+    globalFind({ replace: event.key === 'h' || event.key === 'H' });
+  }
+
   function boot() {
     if (booted) return;
     booted = true;
@@ -556,8 +939,13 @@
     dom.host = byId('viewHost');
     dom.footerHints = byId('footerHints');
     dom.subtitle = byId('brandSubtitle');
+    dom.undoBtn = byId('undoAllBtn');
+    dom.redoBtn = byId('redoAllBtn');
 
     if (!dom.nav || !dom.host) return;
+
+    if (dom.undoBtn) dom.undoBtn.addEventListener('click', undoActive);
+    if (dom.redoBtn) dom.redoBtn.addEventListener('click', redoActive);
 
     renderNav();
     dom.nav.addEventListener('click', onNavClick);
@@ -572,6 +960,7 @@
     activate(initial, { force: true });
     root.addEventListener('hashchange', onHashChange);
     document.addEventListener('keydown', onPrimaryShortcut);
+    document.addEventListener('keydown', onFindShortcut);
 
     if (dom.subtitle && !tools[DEFAULT_VIEW]) {
       dom.subtitle.textContent = FALLBACK_SUBTITLE;
@@ -587,6 +976,13 @@
     isActive: isActive,
     get active() { return active; },
     get tools() { return order.map(function (id) { return tools[id]; }); },
+    /* 撤销 / 重做 */
+    historyTarget: historyTarget,
+    setHistoryTarget: setHistoryTarget,
+    undo: undoActive,
+    redo: redoActive,
+    syncHistory: syncHistoryButtons,
+    historyButtons: historyButtons,
     ui: {
       $: $,
       byId: byId,
@@ -606,10 +1002,24 @@
       copyButton: copyButton,
       checkbox: checkbox,
       field: field,
+      segmented: segmented,
       textarea: textarea,
       note: note,
       empty: empty,
-      statLine: statLine
+      statLine: statLine,
+      historyButtons: historyButtons,
+      codeView: function (options) {
+        return root.CodeView ? root.CodeView.createReadonly(options) : null;
+      },
+      codeEditor: function (options) {
+        return root.CodeView ? root.CodeView.createEditor(options) : null;
+      },
+      highlight: function (language, code) {
+        return root.Syntax ? root.Syntax.highlight(language, code) : escapeHtml(code);
+      }
+    },
+    find: function (options) {
+      return globalFind(options);
     }
   };
 

@@ -41,14 +41,17 @@
   <h2>通过项</h2>
   <ol id="passed"></ol>
 
-  <script src="js/lib/bytes.js?v=8"></script>
-  <script src="js/lib/md5.js?v=8"></script>
-  <script src="js/lib/date-format.js?v=8"></script>
-  <script src="js/lib/sql-format.js?v=8"></script>
-  <script src="js/lib/webcrypto.js?v=8"></script>
-  <script src="js/lib/radix.js?v=8"></script>
-  <script src="js/lib/text-case.js?v=8"></script>
-  <script src="js/lib/jwt.js?v=8"></script>
+  <script src="js/lib/bytes.js?v=10"></script>
+  <script src="js/lib/md5.js?v=10"></script>
+  <script src="js/lib/date-format.js?v=10"></script>
+  <script src="js/lib/sql-format.js?v=10"></script>
+  <script src="js/lib/webcrypto.js?v=10"></script>
+  <script src="js/lib/radix.js?v=10"></script>
+  <script src="js/lib/text-case.js?v=10"></script>
+  <script src="js/lib/jwt.js?v=10"></script>
+  <script src="js/lib/syntax.js?v=10"></script>
+  <script src="js/lib/sql-dialects.js?v=10"></script>
+  <script src="js/lib/sql-lint.js?v=10"></script>
   <script>
     (function () {
       'use strict';
@@ -61,6 +64,8 @@
       var Radix = window.Radix;
       var TextCase = window.TextCase;
       var JWT = window.JWT;
+      var Dialects = window.SQLDialects;
+      var Lint = window.SQLLint;
 
       var pass = 0;
       var fail = 0;
@@ -197,6 +202,113 @@
       truthy('SQL 压缩不拼出 -- 注释', SQL.minify('SELECT a - -1 FROM t').text.indexOf('--') < 0);
       throws('SQL 未闭合字符串报错', function () { SQL.tokenize("SELECT 'abc"); });
 
+      /* ---------------- SQL 方言 ---------------- */
+
+      section('SQL 方言');
+
+      ok('方言数量', Dialects.LIST.length, 16);
+      ok('方言顺序首项', Dialects.LIST[0].id, 'ansi');
+      truthy('MySQL 方言存在', !!Dialects.byId('mysql'));
+      ok('达梦别名 DM8', Dialects.byId('DM8').id, 'dm');
+      ok('金仓别名 kingbasees', Dialects.byId('kingbasees').id, 'kingbase');
+      ok('SQL Server 别名 mssql', Dialects.byId('mssql').id, 'sqlserver');
+      ok('未知方言回落 ansi', Dialects.byId('不存在的方言').id, 'ansi');
+
+      truthy('每种方言都有关键字', Dialects.LIST.every(function (d) { return d.keywords.split(/\s+/).length > 100; }));
+      truthy('达梦关键字表含 ROWNUM', !!Dialects.keywordSet('dm').ROWNUM);
+      truthy('金仓关键字表含 NVL', !!Dialects.keywordSet('kingbase').NVL);
+      truthy('ClickHouse 关键字表含 PREWHERE', !!Dialects.keywordSet('clickhouse').PREWHERE);
+      truthy('MySQL 关键字表含 LIMIT', !!Dialects.keywordSet('mysql').LIMIT);
+      truthy('PostgreSQL 运算符含 ->', Dialects.operatorList('postgresql').indexOf('->') >= 0);
+      truthy('MySQL 运算符含 <=>', Dialects.operatorList('mysql').indexOf('<=>') >= 0);
+
+      ok('识别 Oracle（ROWNUM）', Dialects.detect('SELECT ROWNUM FROM t'), 'oracle');
+      ok('识别 MySQL（反引号）', Dialects.detect('SELECT `a` FROM t'), 'mysql');
+      ok('识别 SQL Server（TOP）', Dialects.detect('SELECT TOP 10 * FROM t'), 'sqlserver');
+      ok('识别 PostgreSQL（::）', Dialects.detect('SELECT a::int FROM t'), 'postgresql');
+      ok('识别 ClickHouse（PREWHERE）', Dialects.detect('SELECT * FROM t PREWHERE x'), 'clickhouse');
+      ok('识别 Db2（WITH UR）', Dialects.detect('SELECT * FROM t WITH UR'), 'db2');
+      ok('识别 SQLite（PRAGMA）', Dialects.detect('PRAGMA table_info(t)'), 'sqlite');
+      ok('无法判定时回落 ansi', Dialects.detect('SELECT 1'), 'ansi');
+
+      /* ---------------- SQL 多方言格式化 ---------------- */
+
+      section('SQL 多方言');
+
+      var dialectCases = [
+        ['mysql', 'SELECT `u`.`id`, IFNULL(o.total, 0) AS t FROM `users` u LEFT JOIN `orders` o ON u.id = o.user_id LIMIT 0, 20'],
+        ['postgresql', "SELECT a::int, b->>'x' FROM t WHERE c ILIKE '%x%'"],
+        ['oracle', 'SELECT NVL(a, 0), DECODE(b, 1, 2) FROM t WHERE ROWNUM <= 10'],
+        ['dm', 'SELECT ROWNUM, NVL(a, 0) FROM t'],
+        ['kingbase', "SELECT LISTAGG(b, ',') WITHIN GROUP (ORDER BY b) FROM t"],
+        ['sqlserver', 'SELECT TOP 10 [a b], ISNULL(c, 0) FROM dbo.t WITH (NOLOCK)'],
+        ['sqlite', "SELECT strftime('%Y', d), group_concat(x) FROM t WHERE a GLOB 'x*'"],
+        ['clickhouse', 'SELECT toDate(d) AS day, uniqExact(uid) FROM t PREWHERE d > today() - 7 GROUP BY day']
+      ];
+
+      dialectCases.forEach(function (pair) {
+        var id = pair[0];
+        var source = pair[1];
+        var before = SQL.signature(SQL.tokenize(source, { dialect: id }));
+        var formatted = SQL.format(source, { indent: 2, dialect: id }).text;
+        var after = SQL.signature(SQL.tokenize(formatted, { dialect: id }));
+        var minified = SQL.minify(source, { dialect: id }).text;
+
+        ok('方言 ' + id + ' 格式化保持 token 序列', after, before);
+        ok('方言 ' + id + ' 幂等', SQL.format(formatted, { indent: 2, dialect: id }).text, formatted);
+        ok('方言 ' + id + ' 压缩保持 token 序列', SQL.signature(SQL.tokenize(minified, { dialect: id })), before);
+      });
+
+      ok('未知方言按通用规则格式化',
+        SQL.signature(SQL.tokenize(SQL.format('select a from t', { indent: 2, dialect: 'nope' }).text)),
+        SQL.signature(SQL.tokenize('select a from t')));
+      truthy('MySQL 方言的关键字集合可用', !!SQL.keywordsFor('mysql').LIMIT);
+      truthy('达梦方言的关键字集合可用', !!SQL.keywordsFor('dm').ROWNUM);
+
+      /* ---------------- SQL 语法检查 ---------------- */
+
+      section('SQL 语法检查');
+
+      function diagCodes(sql, dialect) {
+        return Lint.lint(sql, { dialect: dialect || 'mysql' }).diagnostics.map(function (item) {
+          return item.code;
+        });
+      }
+
+      ok('正常 SQL 无错误', diagCodes("select u.id, count(*) from users u left join orders o on u.id = o.user_id where u.status = 'paid' group by u.id limit 10").filter(function (code) {
+        return code === 'E_TRAILING_COMMA' || code === 'E_UNCLOSED_STRING';
+      }).length, 0);
+
+      truthy('尾逗号报错', diagCodes('SELECT a, FROM t').indexOf('E_TRAILING_COMMA') >= 0);
+      truthy('未闭合字符串报错', diagCodes("SELECT 'abc").indexOf('E_UNCLOSED_STRING') >= 0);
+      truthy('未闭合注释报错', diagCodes('SELECT 1 /* x').indexOf('E_UNCLOSED_COMMENT') >= 0);
+      truthy('括号不配对报错', diagCodes('SELECT (1 FROM t').indexOf('E_UNBALANCED_PAREN') >= 0);
+      truthy('JOIN 缺 ON 提示', diagCodes('SELECT a FROM t1 JOIN t2').indexOf('E_JOIN_NO_ON') >= 0);
+      truthy('子句顺序报错', diagCodes('SELECT a FROM t WHERE x = 1 ORDER BY a GROUP BY a').indexOf('E_CLAUSE_ORDER') >= 0);
+      truthy('INSERT 缺 VALUES 报错', diagCodes('INSERT INTO t (a, b)').indexOf('E_MISSING_VALUES') >= 0);
+      truthy('DELETE 无 WHERE 警告', diagCodes('DELETE FROM t').indexOf('W_NO_WHERE') >= 0);
+      truthy('UPDATE 无 WHERE 警告', diagCodes('UPDATE t SET a = 1').indexOf('W_NO_WHERE') >= 0);
+      truthy('悬空 WHERE 报错', diagCodes('SELECT a FROM t WHERE').indexOf('E_DANGLING_KEYWORD') >= 0);
+      truthy('方言差异提示（MySQL 用 TOP）', diagCodes('SELECT TOP 10 * FROM t', 'mysql').indexOf('H_DIALECT_KEYWORD') >= 0);
+
+      var lintResult = Lint.lint('SELECT a, FROM t', { dialect: 'mysql' });
+      truthy('诊断带行号', lintResult.diagnostics[0].line === 1);
+      truthy('诊断带列号', lintResult.diagnostics[0].column > 0);
+      truthy('诊断偏移在文本范围内',
+        lintResult.diagnostics.every(function (item) {
+          return item.start >= 0 && item.end <= 38 && item.end > item.start - 1;
+        }));
+      ok('诊断按位置排序', lintResult.diagnostics.every(function (item, index, list) {
+        return index === 0 || list[index - 1].start <= item.start;
+      }), true);
+      ok('空输入无诊断', Lint.lint('').diagnostics.length, 0);
+      ok('检查不修改成功用例（Oracle）', Lint.lint('SELECT NVL(a, 0) FROM t', { dialect: 'oracle' }).diagnostics.filter(function (item) {
+        return item.severity === 'error';
+      }).length, 0);
+      ok('摘要统计', Lint.summary(lintResult).errors > 0, true);
+      ok('无问题时摘要文案', Lint.summary(Lint.lint('SELECT 1')).text, '未发现问题');
+      ok('方言由内容自动识别', Lint.lint('SELECT ROWNUM FROM t').dialectId, 'oracle');
+
       /* ---------------- 日期 ---------------- */
 
       section('日期');
@@ -250,6 +362,37 @@
       ok('JWT sub', decoded.payload.sub, '1234567890');
       truthy('JWT 签名段长度 > 0', decoded.signatureBytes > 0);
       throws('JWT 段数错误报错', function () { JWT.decode('a.b'); });
+
+      /* ---------------- 语法着色 ---------------- */
+
+      section('语法着色');
+
+      var SYN = window.Syntax;
+
+      ok('未知语言按纯文本转义', SYN.highlight('nope', '<a>'), '&lt;a&gt;');
+      ok('纯文本转义', SYN.highlight('text', '<script>'), '&lt;script&gt;');
+      truthy('SQL 关键字着色', SYN.highlight('sql', 'SELECT 1').indexOf('syn-kw') >= 0);
+      truthy('SQL 字符串不着成关键字', SYN.highlight('sql', "SELECT 'FROM'").indexOf('syn-str') >= 0);
+      truthy('SQL 注释着色', SYN.highlight('sql', '-- hi').indexOf('syn-com') >= 0);
+      truthy('JSON 键与值区分', SYN.highlight('json', '{"a":1}').indexOf('syn-key') >= 0);
+      truthy('JSON 字面量', SYN.highlight('json', '[true,null]').indexOf('syn-null') >= 0);
+      truthy('Java 注释', SYN.highlight('java', '// c').indexOf('syn-com') >= 0);
+      truthy('Python 注释', SYN.highlight('python', '# c').indexOf('syn-com') >= 0);
+      truthy('XML 标签', SYN.highlight('xml', '<a>').indexOf('syn-tag') >= 0);
+      truthy('着色不注入 HTML', SYN.highlight('sql', "SELECT '<img src=x>'").indexOf('<img') < 0);
+
+      /* 去掉着色标签并还原实体后必须与原文完全一致 */
+      var roundTrip = SYN.highlight('sql', "SELECT 'a<b' & c")
+        .replace(/<[^>]+>/g, '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+      ok('着色还原原文', roundTrip, "SELECT 'a<b' & c");
+
+      ok('语言识别 SQL', SYN.detect('SELECT a FROM b'), 'sql');
+      ok('语言识别 JSON', SYN.detect('{"a":1}'), 'json');
+      ok('语言识别 XML', SYN.detect('<a href="x">t</a>'), 'xml');
+      ok('语言识别 Java', SYN.detect('public class A {}'), 'java');
 
       /* ---------------- WebCrypto ---------------- */
 

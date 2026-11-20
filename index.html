@@ -16,8 +16,9 @@
       } catch (e) { /* 忽略存储异常 */ }
     })();
   </script>
-  <link rel="stylesheet" href="css/style.css?v=8">
-  <link rel="stylesheet" href="css/shell.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=10">
+  <link rel="stylesheet" href="css/shell.css?v=10">
+  <link rel="stylesheet" href="css/enhance.css?v=10">
 </head>
 <body>
   <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -44,6 +45,12 @@
     <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
     <symbol id="i-replace" viewBox="0 0 24 24"><path d="M3 7h13"/><polyline points="13 4 16 7 13 10"/><path d="M21 17H8"/><polyline points="11 14 8 17 11 20"/></symbol>
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></symbol>
+    <symbol id="i-check-circle" viewBox="0 0 24 24"><path d="M21.8 10A10 10 0 1 1 17 3.3"/><polyline points="9 11 12 14 22 4"/></symbol>
+    <symbol id="i-broom" viewBox="0 0 24 24"><path d="m13 11 9-9"/><path d="M14.6 12.6 3 21l1.4-5.6L16 3.8Z"/><path d="M2 22h8"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m15 4 5 5"/><path d="M3 21 14 10l-2-2L1 19Z"/><path d="M18 2v4M20 4h-4M19 9v3M21 10.5h-4"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2"/><path d="m15.5 7.5 3 3L22 7l-3-3"/><path d="M11.39 11.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Z"/><path d="m11.39 11.61 4.11-4.11"/></symbol>
     <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
@@ -63,6 +70,14 @@
       </div>
       <div class="topbar-actions">
         <span class="privacy-note"><svg class="icon"><use href="#i-lock"></use></svg>本地处理，数据不会上传</span>
+        <div class="topbar-history">
+          <button class="history-btn" id="undoAllBtn" type="button" title="撤销当前页签的上一次编辑 (Ctrl+Z)" aria-label="撤销" disabled>
+            <svg class="icon"><use href="#i-undo"></use></svg>
+          </button>
+          <button class="history-btn" id="redoAllBtn" type="button" title="重做 (Ctrl+Y)" aria-label="重做" disabled>
+            <svg class="icon"><use href="#i-redo"></use></svg>
+          </button>
+        </div>
         <button class="icon-btn" id="themeToggle" type="button" title="切换主题" aria-label="切换明暗主题">
           <svg class="icon icon-moon"><use href="#i-moon"></use></svg>
           <svg class="icon icon-sun"><use href="#i-sun"></use></svg>
@@ -91,9 +106,14 @@
               <label class="check"><input type="checkbox" id="autoFormat"> 自动格式化</label>
             </div>
             <div class="toolbar-actions">
-              <button class="btn btn-ghost" id="undoBtn" type="button" title="撤销上一次文本修改 (Ctrl+Z)" disabled>
-                <svg class="icon"><use href="#i-undo"></use></svg>撤销
-              </button>
+              <div class="history-group history-group-inline" role="group" aria-label="撤销与重做">
+                <button class="btn btn-ghost history-btn-wide" id="undoBtn" type="button" title="撤销上一次文本修改 (Ctrl+Z)" disabled>
+                  <svg class="icon"><use href="#i-undo"></use></svg>撤销
+                </button>
+                <button class="btn btn-ghost history-btn-wide" id="redoBtn" type="button" title="重做上一次撤销 (Ctrl+Y)" disabled>
+                  <svg class="icon"><use href="#i-redo"></use></svg>重做
+                </button>
+              </div>
               <button class="btn btn-ghost" id="unescapeBtn" type="button" title="将 \n、&quot; 等转义还原为字符">去转义</button>
               <button class="btn btn-ghost" id="escapeBtn" type="button" title="把输入文本转为 JSON 字符串字面量">转义</button>
               <button class="btn btn-ghost" id="validateBtn" type="button" title="仅检查语法，不修改结果">
@@ -299,25 +319,37 @@
     <span id="toastText"></span>
   </div>
 
-  <script src="js/json-tools.js?v=8"></script>
-  <script src="js/toolbox.js?v=8"></script>
-  <script src="js/lib/bytes.js?v=8"></script>
-  <script src="js/lib/md5.js?v=8"></script>
-  <script src="js/lib/date-format.js?v=8"></script>
-  <script src="js/lib/sql-format.js?v=8"></script>
-  <script src="js/lib/webcrypto.js?v=8"></script>
-  <script src="js/lib/radix.js?v=8"></script>
-  <script src="js/lib/text-case.js?v=8"></script>
-  <script src="js/lib/jwt.js?v=8"></script>
-  <script src="js/tools/encode.js?v=8"></script>
-  <script src="js/tools/hash.js?v=8"></script>
-  <script src="js/tools/crypto.js?v=8"></script>
-  <script src="js/tools/timestamp.js?v=8"></script>
-  <script src="js/tools/uuid.js?v=8"></script>
-  <script src="js/tools/jwt.js?v=8"></script>
-  <script src="js/tools/sql.js?v=8"></script>
-  <script src="js/tools/regex.js?v=8"></script>
-  <script src="js/tools/text.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/json-tools.js?v=10"></script>
+  <script src="js/lib/text-mirror.js?v=10"></script>
+  <script src="js/lib/syntax.js?v=10"></script>
+  <script src="js/lib/history.js?v=10"></script>
+  <script src="js/lib/sql-dialects.js?v=10"></script>
+  <script src="js/lib/sql-lint.js?v=10"></script>
+  <script src="js/lib/completer.js?v=10"></script>
+  <script src="js/lib/codeview.js?v=10"></script>
+  <script src="js/lib/finder.js?v=10"></script>
+  <script src="js/toolbox.js?v=10"></script>
+  <script src="js/lib/bytes.js?v=10"></script>
+  <script src="js/lib/md5.js?v=10"></script>
+  <script src="js/lib/date-format.js?v=10"></script>
+  <script src="js/lib/sql-format.js?v=10"></script>
+  <script src="js/lib/webcrypto.js?v=10"></script>
+  <script src="js/lib/radix.js?v=10"></script>
+  <script src="js/lib/text-case.js?v=10"></script>
+  <script src="js/lib/jwt.js?v=10"></script>
+  <script src="js/tools/encode.js?v=10"></script>
+  <script src="js/tools/hash.js?v=10"></script>
+  <script src="js/tools/crypto.js?v=10"></script>
+  <script src="js/tools/timestamp.js?v=10"></script>
+  <script src="js/tools/uuid.js?v=10"></script>
+  <script src="js/tools/jwt.js?v=10"></script>
+  <script src="js/tools/sql.js?v=10"></script>
+  <script src="js/tools/regex.js?v=10"></script>
+  <script src="js/tools/text.js?v=10"></script>
+  <script src="js/tools/notes.js?v=10"></script>
+  <script src="js/tools/git.js?v=10"></script>
+  <script src="js/tools/linux.js?v=10"></script>
+  <script src="js/tools/windows.js?v=10"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>

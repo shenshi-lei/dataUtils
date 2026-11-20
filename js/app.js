@@ -86,6 +86,7 @@
     outputFindLayerInner: $('outputFindLayerInner'),
     outputContent: $('outputContent'),
     undoBtn: $('undoBtn'),
+    redoBtn: $('redoBtn'),
     formatBtn: $('formatBtn'),
     minifyBtn: $('minifyBtn'),
     validateBtn: $('validateBtn'),
@@ -233,16 +234,8 @@
     text: ''
   };
 
-  var undoStack = [];
-  var undoChars = 0;
-  var UNDO_LIMIT = 60;
-  var UNDO_CHAR_LIMIT = 8000000;
-  var historyLastText = '';
-  var historyLastStart = 0;
-  var historyLastEnd = 0;
-  var historyLastAt = 0;
-  var historyBurst = false;
-  var historyIgnoreNext = false;
+  /* 撤销 / 重做由 js/lib/history.js 统一提供，这里只保留一个引用 */
+  var history = null;
 
   var toastTimer = 0;
   var syncFlashTimer = 0;
@@ -3138,121 +3131,75 @@
     storageSet('draft', els.input.value);
   }
 
-  /* ---------------- 撤销历史 ---------------- */
+  /* ---------------- 撤销历史（统一由 js/lib/history.js 提供） ---------------- */
 
-  function updateUndoButton() {
-    var hasHistory = undoStack.length > 0;
-    els.undoBtn.disabled = !hasHistory;
-    els.undoBtn.title = hasHistory
-      ? '撤销上一次文本修改 (Ctrl+Z)'
-      : '没有可撤销的文本修改';
-  }
+  function initHistory() {
+    if (!window.TextHistory) return null;
 
-  function pushUndoSnapshot(text, start, end) {
-    var snapshotText = typeof text === 'string' ? text : els.input.value;
-    var top = undoStack[undoStack.length - 1];
-
-    if (top && top.text === snapshotText) return;
-
-    undoStack.push({
-      text: snapshotText,
-      start: typeof start === 'number' ? start : (els.input.selectionStart || 0),
-      end: typeof end === 'number' ? end : (els.input.selectionEnd || 0)
+    history = window.TextHistory.of(els.input) || window.TextHistory.attach(els.input, {
+      limit: 80,
+      onChange: function () {
+        updateUndoButton();
+        if (window.Toolbox && window.Toolbox.syncHistory) window.Toolbox.syncHistory();
+      }
     });
 
-    undoChars += snapshotText.length;
-
-    while (
-      undoStack.length > 1 &&
-      (undoStack.length > UNDO_LIMIT || undoChars > UNDO_CHAR_LIMIT)
-    ) {
-      undoChars -= undoStack.shift().text.length;
+    updateUndoButton();
+    if (window.Toolbox && window.Toolbox.setHistoryTarget) {
+      window.Toolbox.setHistoryTarget('json', els.input);
     }
 
+    return history;
+  }
+
+  function updateUndoButton() {
+    var canUndo = !!(history && history.canUndo());
+    var canRedo = !!(history && history.canRedo());
+
+    els.undoBtn.disabled = !canUndo;
+    els.undoBtn.title = canUndo
+      ? '撤销上一次文本修改 (Ctrl+Z)'
+      : '没有可撤销的文本修改';
+
+    if (els.redoBtn) {
+      els.redoBtn.disabled = !canRedo;
+      els.redoBtn.title = canRedo
+        ? '重做上一次撤销 (Ctrl+Y)'
+        : '没有可重做的操作';
+    }
+
+    if (window.Toolbox && window.Toolbox.syncHistory) window.Toolbox.syncHistory();
+  }
+
+  /* 程序化修改（导入 / 示例 / 格式化回填）前记一个撤销点 */
+  function recordProgrammaticChange() {
+    if (history) history.record();
+  }
+
+  /* 修改结束后立即刷新撤销 / 重做按钮状态 */
+  function finishProgrammaticChange() {
+    if (!history) return;
+    history.burst = false;
+    history.lastAt = 0;
+    history.lastText = els.input.value;
+    history.lastStart = els.input.selectionStart || 0;
+    history.lastEnd = els.input.selectionEnd || 0;
     updateUndoButton();
   }
 
-  function recordProgrammaticChange() {
-    pushUndoSnapshot(
-      els.input.value,
-      els.input.selectionStart || 0,
-      els.input.selectionEnd || 0
-    );
-    historyIgnoreNext = true;
-  }
-
-  function finishProgrammaticChange() {
-    historyIgnoreNext = false;
-    historyBurst = false;
-    historyLastAt = 0;
-    historyLastText = els.input.value;
-    historyLastStart = els.input.selectionStart || 0;
-    historyLastEnd = els.input.selectionEnd || 0;
-  }
-
+  /* 输入事件由 history 自己收集，这里只做界面联动 */
   function noteInputChange() {
-    if (historyIgnoreNext) {
-      historyIgnoreNext = false;
-      historyBurst = false;
-      historyLastAt = 0;
-      historyLastText = els.input.value;
-      historyLastStart = els.input.selectionStart || 0;
-      historyLastEnd = els.input.selectionEnd || 0;
-      return;
-    }
-
-    if (historyLastText === els.input.value) return;
-
-    var now = Date.now();
-
-    if (!historyBurst || now - historyLastAt > 700) {
-      pushUndoSnapshot(historyLastText, historyLastStart, historyLastEnd);
-      historyBurst = true;
-    }
-
-    historyLastAt = now;
-    historyLastText = els.input.value;
-    historyLastStart = els.input.selectionStart || 0;
-    historyLastEnd = els.input.selectionEnd || 0;
-  }
-
-  function initHistory() {
-    undoStack = [];
-    undoChars = 0;
-    historyIgnoreNext = false;
-    historyBurst = false;
-    historyLastAt = 0;
-    historyLastText = els.input.value;
-    historyLastStart = els.input.selectionStart || 0;
-    historyLastEnd = els.input.selectionEnd || 0;
     updateUndoButton();
   }
 
   function undoLastChange() {
-    if (!undoStack.length) {
+    if (!history) return;
+
+    if (!history.undo()) {
       showToast('没有可撤销的操作');
       updateUndoButton();
       return;
     }
-
-    var snapshot = undoStack.pop();
-    undoChars -= snapshot.text.length;
-
-    var length = snapshot.text.length;
-    var start = Math.min(snapshot.start, length);
-    var end = Math.min(snapshot.end, length);
-
-    els.input.value = snapshot.text;
-    els.input.setSelectionRange(start, end);
-
-    historyIgnoreNext = true;
-    historyBurst = false;
-    historyLastAt = 0;
-    historyLastText = snapshot.text;
-    historyLastStart = start;
-    historyLastEnd = end;
-
-    els.input.dispatchEvent(new Event('input', { bubbles: true }));
 
     var synced = syncOutputAfterReplace();
     if (findIsOpen()) {
@@ -3262,7 +3209,24 @@
     updateUndoButton();
     if (synced) flashOutputSync();
     showToast('已撤销上一步');
-    els.input.focus();
+  }
+
+  function redoLastChange() {
+    if (!history) return;
+
+    if (!history.redo()) {
+      showToast('没有可重做的操作');
+      return;
+    }
+
+    var synced = syncOutputAfterReplace();
+    if (findIsOpen()) {
+      runFind({ anchorSide: 'left', preserve: true, noScroll: true });
+    }
+
+    updateUndoButton();
+    if (synced) flashOutputSync();
+    showToast('已重做');
   }
 
   function clearInputErrorOnEdit() {
@@ -3611,6 +3575,7 @@
     });
 
     els.undoBtn.addEventListener('click', undoLastChange);
+    if (els.redoBtn) els.redoBtn.addEventListener('click', redoLastChange);
 
     els.minifyBtn.addEventListener('click', doMinify);
     els.validateBtn.addEventListener('click', validateOnly);
@@ -3850,11 +3815,7 @@
       var inFindField = findBars.left.bar.contains(activeElement) ||
         findBars.right.bar.contains(activeElement);
 
-      if (modifier && !event.shiftKey && (event.key === 'z' || event.key === 'Z') && !inFindField) {
-        event.preventDefault();
-        undoLastChange();
-        return;
-      }
+      /* 撤销 / 重做交给 js/lib/history.js 的全局监听，这里不再拦截 */
 
       var activeSide = findBars.right.bar.contains(document.activeElement) ? 'right' : 'left';
 

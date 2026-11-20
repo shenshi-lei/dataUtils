@@ -12,11 +12,12 @@
   var DF = window.DateFormat;
 
   function build() {
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-key',
       title: 'JWT 解析',
-      desc: '解码 Header 与 Payload 并检查时间声明；只做解码，不验证签名，也不发送任何网络请求。'
+      desc: '解码 Header 与 Payload 并检查时间声明；只做解码，不验证签名，也不发送任何网络请求。',
+      search: true
     }));
 
     var toolbar = ui.el('div', 't-toolbar');
@@ -28,12 +29,20 @@
     toolbar.appendChild(options);
 
     var actions = ui.el('div', 't-actions');
+
+    var searchBtn = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在 Token 与解析结果中查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
+
     var sampleBtn = ui.el('button', 'btn btn-ghost btn-sm');
     sampleBtn.type = 'button';
     sampleBtn.textContent = '示例 token';
 
     var clearBtn = ui.miniButton('清空', { icon: 'i-trash', danger: true });
 
+    actions.appendChild(searchBtn);
     actions.appendChild(sampleBtn);
     actions.appendChild(clearBtn);
     toolbar.appendChild(actions);
@@ -71,23 +80,27 @@
 
     var headerTitle = ui.el('div', 't-inline');
     headerTitle.appendChild(ui.el('p', 't-label', 'Header'));
-    var headerArea = ui.el('pre', 't-result');
-    headerArea.style.minHeight = '90px';
-    headerTitle.appendChild(ui.copyButton(function () { return headerArea.textContent; }, '复制'));
+    var headerCopy = ui.copyButton(function () { return headView.getValue(); }, '复制');
+    headerTitle.appendChild(headerCopy);
+
+    var headView = ui.codeView({ language: 'json', placeholder: '' });
+    headView.root.style.minHeight = '96px';
 
     var payloadTitle = ui.el('div', 't-inline');
     payloadTitle.appendChild(ui.el('p', 't-label', 'Payload'));
-    var payloadArea = ui.el('pre', 't-result');
-    payloadArea.style.minHeight = '120px';
-    payloadTitle.appendChild(ui.copyButton(function () { return payloadArea.textContent; }, '复制'));
+    var payloadCopy = ui.copyButton(function () { return payloadView.getValue(); }, '复制');
+    payloadTitle.appendChild(payloadCopy);
+
+    var payloadView = ui.codeView({ language: 'json', placeholder: '' });
+    payloadView.root.style.minHeight = '130px';
 
     var signatureNote = ui.el('div', 't-note is-warn');
 
     scroll.appendChild(summaryWrap);
     scroll.appendChild(headerTitle);
-    scroll.appendChild(headerArea);
+    scroll.appendChild(headView.root);
     scroll.appendChild(payloadTitle);
-    scroll.appendChild(payloadArea);
+    scroll.appendChild(payloadView.root);
     scroll.appendChild(signatureNote);
 
     outputBody.appendChild(scroll);
@@ -96,6 +109,24 @@
     cols.appendChild(inputCol);
     cols.appendChild(outputCol);
     root.appendChild(cols);
+
+    /* ---------------- 查找 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      finder = window.Finder.attach(root, {
+        label: 'JWT 查找',
+        scope: 'Token + 解析结果',
+        targets: [inputArea, headView.pre, payloadView.pre],
+        getText: function () {
+          return headView.getValue() + '\n' + payloadView.getValue();
+        }
+      });
+      return finder;
+    }
 
     /* ---------------- 逻辑 ---------------- */
 
@@ -112,9 +143,9 @@
     function setDetailVisible(visible) {
       summaryWrap.hidden = !visible;
       headerTitle.hidden = !visible;
-      headerArea.hidden = !visible;
+      headView.root.hidden = !visible;
       payloadTitle.hidden = !visible;
-      payloadArea.hidden = !visible;
+      payloadView.root.hidden = !visible;
       signatureNote.hidden = !visible;
     }
 
@@ -122,8 +153,8 @@
       var raw = inputArea.value;
       errorText.textContent = '';
       summaryBox.textContent = '';
-      headerArea.textContent = '';
-      payloadArea.textContent = '';
+      headView.setValue('');
+      payloadView.setValue('');
 
       var token = JWT.normalize(raw);
 
@@ -169,11 +200,10 @@
         if (payload.sub !== undefined) addSummary('sub', String(payload.sub));
       }
 
-      headerArea.textContent = JSON.stringify(header, null, 2);
-      payloadArea.textContent = JSON.stringify(payload, null, 2);
+      headView.setValue(JSON.stringify(header, null, 2));
+      payloadView.setValue(JSON.stringify(payload, null, 2));
 
-      signatureNote.textContent = '';
-      signatureNote.appendChild(ui.icon('i-alert'));
+      signatureNote.textContent = '';      signatureNote.appendChild(ui.icon('i-alert'));
       signatureNote.appendChild(ui.el('span', '',
         '签名段 ' + decoded.signatureBytes + ' 字节。本工具只做解码展示，不验证签名；' +
         '要确认 token 可信，必须在服务端用密钥或公钥校验。'));
@@ -196,7 +226,13 @@
     inputArea.value = JWT.sample();
     render();
 
-    return { root: root, render: render };
+    return {
+      root: root,
+      render: render,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      }
+    };
   }
 
   var instance = null;
@@ -208,9 +244,16 @@
     desc: '解码 Header / Payload 并检查 exp、iat、nbf',
     icon: 'i-key',
     keywords: ['jwt', 'token', 'jose', 'bearer', '解码'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '重新解析' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '重新解析' },
+      { keys: ['Ctrl', 'F'], label: '查找' }
+    ],
     run: function () {
       if (instance) instance.render();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();

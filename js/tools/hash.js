@@ -29,11 +29,12 @@
       results: []
     };
 
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-hash',
       title: '哈希 / MD5',
-      desc: 'MD5、SHA-1、SHA-256/384/512 与 HMAC 摘要，输入内容不会离开本机。'
+      desc: 'MD5、SHA-1、SHA-256/384/512 与 HMAC 摘要，输入内容不会离开本机。',
+      search: true
     }));
 
     var toolbar = ui.el('div', 't-toolbar');
@@ -60,6 +61,13 @@
     toolbar.appendChild(options);
 
     var actions = ui.el('div', 't-actions');
+
+    var searchBtn = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在输入与摘要结果中查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
+
     var copyAllBtn = ui.miniButton('复制全部', {
       icon: 'i-copy',
       onClick: function () {
@@ -82,6 +90,7 @@
         inputArea.focus();
       }
     });
+    actions.appendChild(searchBtn);
     actions.appendChild(copyAllBtn);
     actions.appendChild(clearBtn);
     toolbar.appendChild(actions);
@@ -173,6 +182,19 @@
     root.appendChild(cols);
 
     /* ---------------- 逻辑 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      finder = window.Finder.attach(root, {
+        label: '哈希查找',
+        scope: '输入 + 摘要',
+        targets: [inputArea, rowsBox]
+      });
+      return finder;
+    }
 
     function selectedList() {
       return ALGORITHMS.filter(function (name) { return state.selected[name]; });
@@ -302,7 +324,13 @@
     syncHmac();
     compute();
 
-    return { root: root, compute: compute };
+    return {
+      root: root,
+      compute: compute,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      }
+    };
   }
 
   var instance = null;
@@ -314,9 +342,16 @@
     desc: 'MD5、SHA-1、SHA-256/384/512 与 HMAC 摘要计算',
     icon: 'i-hash',
     keywords: ['md5', 'sha', 'sha1', 'sha256', 'hmac', 'hash', '摘要'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '重新计算' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '重新计算' },
+      { keys: ['Ctrl', 'F'], label: '查找' }
+    ],
     run: function () {
       if (instance) instance.compute();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();

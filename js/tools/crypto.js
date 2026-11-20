@@ -16,11 +16,12 @@
   function build() {
     var state = { busy: false };
 
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-lock',
       title: 'AES 加解密',
-      desc: 'AES-128/192/256，支持 CBC（PKCS#7）、CTR 与 GCM；密钥与明文只在内存中处理。'
+      desc: 'AES-128/192/256，支持 CBC（PKCS#7）、CTR 与 GCM；密钥与明文只在内存中处理。',
+      search: true
     }));
 
     /* ---------- 第一行：算法与操作 ---------- */
@@ -56,6 +57,13 @@
     bar1.appendChild(options1);
 
     var actions1 = ui.el('div', 't-actions');
+
+    var searchBtn = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在明文与密文中查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
+
     var encryptBtn = ui.el('button', 'btn btn-primary btn-sm');
     encryptBtn.type = 'button';
     encryptBtn.appendChild(ui.icon('i-lock'));
@@ -70,6 +78,7 @@
     swapBtn.type = 'button';
     swapBtn.textContent = '交换';
 
+    actions1.appendChild(searchBtn);
     actions1.appendChild(encryptBtn);
     actions1.appendChild(decryptBtn);
     actions1.appendChild(swapBtn);
@@ -175,6 +184,19 @@
     root.appendChild(notes);
 
     /* ---------------- 逻辑 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      finder = window.Finder.attach(root, {
+        label: 'AES 查找',
+        scope: '明文 + 密文',
+        targets: [plainArea, cipherArea]
+      });
+      return finder;
+    }
 
     function decodeWith(text, encoding) {
       if (encoding === 'hex') return B.hexToBytes(text);
@@ -452,7 +474,14 @@
     updateIvBadge();
     updateStats();
 
-    return { root: root, encrypt: doEncrypt, decrypt: doDecrypt };
+    return {
+      root: root,
+      encrypt: doEncrypt,
+      decrypt: doDecrypt,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      }
+    };
   }
 
   var instance = null;
@@ -464,9 +493,16 @@
     desc: 'AES-128/192/256，CBC / CTR / GCM 三种模式',
     icon: 'i-lock',
     keywords: ['aes', 'encrypt', 'decrypt', 'cbc', 'gcm', 'ctr', '加密', '解密'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '加密' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '加密' },
+      { keys: ['Ctrl', 'F'], label: '查找' }
+    ],
     run: function () {
       if (instance) instance.encrypt();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();

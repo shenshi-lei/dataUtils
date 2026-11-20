@@ -17,12 +17,15 @@
       parseZone: 'local'
     };
 
-    var root = ui.el('section', 'view');
+    var root = ui.el('section', 't-page');
     root.appendChild(ui.head({
       icon: 'i-clock',
       title: '时间戳转换',
-      desc: '秒 / 毫秒 / 微秒时间戳与本地、UTC、常用时区互转，支持相对时间与严格日期校验。'
+      desc: '秒 / 毫秒 / 微秒时间戳与本地、UTC、常用时区互转，支持相对时间与严格日期校验。',
+      search: true
     }));
+
+    /* ---------------- 工具栏 ---------------- */
 
     var toolbar = ui.el('div', 't-toolbar');
     var options = ui.el('div', 't-options');
@@ -41,22 +44,50 @@
     toolbar.appendChild(options);
 
     var actions = ui.el('div', 't-actions');
+
+    var searchBtn = ui.miniButton('查找', {
+      icon: 'i-search',
+      title: '在页签内查找 (Ctrl+F)',
+      onClick: function () { TB.find(); }
+    });
+
     var nowBtn = ui.el('button', 'btn btn-ghost btn-sm');
     nowBtn.type = 'button';
     nowBtn.appendChild(ui.icon('i-clock'));
     nowBtn.appendChild(document.createTextNode('用当前时间'));
+
+    actions.appendChild(searchBtn);
     actions.appendChild(nowBtn);
     toolbar.appendChild(actions);
 
     root.appendChild(toolbar);
 
-    /* ---------- 当前时间 ---------- */
+    /* ---------- 当前时间（单行条，不占一整个卡片） ---------- */
 
     var liveCard = ui.el('section', 't-col');
-    liveCard.appendChild(ui.colHead('当前时间', { badge: null }));
+    liveCard.classList.add('t-live');
+    liveCard.appendChild(ui.colHead('当前时间', {
+      badge: null,
+      actions: [
+        ui.miniButton('复制全部', {
+          icon: 'i-copy',
+          title: '复制秒级、毫秒级与本地时间',
+          onClick: function () {
+            var now = new Date();
+            var text = [
+              '秒级: ' + Math.floor(now.getTime() / 1000),
+              '毫秒级: ' + now.getTime(),
+              '本地: ' + DF.format(now, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'local' }),
+              'UTC: ' + DF.format(now, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'UTC' })
+            ].join('\n');
+            ui.copyText(text).then(function (ok) { ui.toast(ok ? '已复制' : '复制失败'); });
+          }
+        })
+      ]
+    }));
 
-    var liveBody = ui.el('div', 't-col-body');
-    var liveRows = ui.el('div', 't-rows');
+    var liveBody = ui.el('div', 't-col-body t-live-body');
+    var liveRows = ui.el('div', 't-rows t-rows-compact');
     liveBody.appendChild(liveRows);
     liveCard.appendChild(liveBody);
     root.appendChild(liveCard);
@@ -67,7 +98,19 @@
 
     /* 左：时间戳 → 时间 */
     var left = ui.el('section', 't-col');
-    left.appendChild(ui.colHead('时间戳 → 时间'));
+    left.appendChild(ui.colHead('时间戳 → 时间', {
+      actions: [
+        ui.miniButton('现在', {
+          icon: 'i-clock',
+          title: '填入当前毫秒时间戳',
+          onClick: function () {
+            tsInput.value = String(Date.now());
+            unitSelect.value = 'auto';
+            renderTimestamp();
+          }
+        })
+      ]
+    }));
 
     var leftBody = ui.el('div', 't-col-body');
 
@@ -99,7 +142,19 @@
 
     /* 右：时间 → 时间戳 */
     var right = ui.el('section', 't-col');
-    right.appendChild(ui.colHead('时间 → 时间戳'));
+    right.appendChild(ui.colHead('时间 → 时间戳', {
+      actions: [
+        ui.miniButton('现在', {
+          icon: 'i-clock',
+          title: '填入当前本地时间',
+          onClick: function () {
+            dateInput.value = DF.format(new Date(), 'YYYY-MM-DD HH:mm:ss', { timeZone: 'local' });
+            inputZoneSelect.value = 'local';
+            renderDate();
+          }
+        })
+      ]
+    }));
 
     var rightBody = ui.el('div', 't-col-body');
 
@@ -108,6 +163,10 @@
     dateInput.placeholder = '例如 2026-11-19 22:03:34';
     dateInput.setAttribute('aria-label', '日期时间');
 
+    var dateInline = ui.el('div', 't-inline');
+    dateInline.appendChild(dateInput);
+    rightBody.appendChild(ui.field('日期时间', dateInline, '支持 2026-11-19、2026/11/19 22:03、2026-11-19T14:03:34Z 等格式'));
+
     var inputZoneSelect = ui.el('select', 't-select');
     inputZoneSelect.setAttribute('aria-label', '输入时区');
     DF.ZONES.forEach(function (zone) {
@@ -115,10 +174,6 @@
       option.value = zone.id;
       inputZoneSelect.appendChild(option);
     });
-
-    var dateInline = ui.el('div', 't-inline');
-    dateInline.appendChild(dateInput);
-    rightBody.appendChild(ui.field('日期时间', dateInline, '支持 2026-11-19、2026/11/19 22:03、2026-11-19T14:03:34Z 等格式'));
     rightBody.appendChild(ui.field('输入时区', inputZoneSelect));
 
     var dateError = ui.el('p', 't-error');
@@ -132,14 +187,35 @@
     cols.appendChild(right);
     root.appendChild(cols);
 
+    /* ---------------- 查找 ---------------- */
+
+    var finder = null;
+
+    function ensureFinder() {
+      if (finder) return finder;
+
+      /* 时间戳页签没有大段文本，直接在结果区做只读查找 */
+      finder = window.Finder.attach(root, {
+        label: '时间戳查找',
+        scope: '结果列表',
+        targets: [root]
+      });
+      return finder;
+    }
+
     /* ---------------- 组件 ---------------- */
 
-    function makeRow(label, value, copyValue) {
+    function makeRow(label, value, copyValue, sub) {
       var row = ui.el('div', 't-row');
       row.appendChild(ui.el('div', 't-row-key', label));
 
-      var val = ui.el('div', 't-row-val', value || '—');
-      if (!value) val.classList.add('is-muted');
+      var val = ui.el('div', 't-row-val');
+      var main = ui.el('div', 't-row-main', value || '—');
+      if (!value) main.classList.add('is-muted');
+      val.appendChild(main);
+
+      if (sub) val.appendChild(ui.el('div', 't-row-sub', sub));
+
       row.appendChild(val);
 
       var act = ui.el('div', 't-row-act');
@@ -161,7 +237,7 @@
     function replaceRows(box, items) {
       box.textContent = '';
       items.forEach(function (item) {
-        box.appendChild(makeRow(item.label, item.value, item.copy));
+        box.appendChild(makeRow(item.label, item.value, item.copy, item.sub));
       });
     }
 
@@ -175,14 +251,19 @@
       var items = [
         { label: '秒级', value: String(seconds) },
         { label: '毫秒级', value: String(now.getTime()) },
-        { label: '本地时间', value: DF.format(now, 'YYYY-MM-DD HH:mm:ss', { timeZone: 'local' }) + ' ' + DF.weekday(now, { timeZone: 'local' }) },
-        { label: 'UTC', value: DF.format(now, 'YYYY-MM-DD HH:mm:ss', { timeZone: 'UTC' }) }
+        {
+          label: '本地时间',
+          value: DF.format(now, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'local' }),
+          sub: DF.weekday(now, { timeZone: 'local' }) + ' · ' + DF.format(now, 'ZZ', { timeZone: 'local' })
+        },
+        { label: 'UTC', value: DF.format(now, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'UTC' }) + 'Z' }
       ];
 
       if (zone !== 'local' && zone !== 'UTC') {
         items.push({
           label: zone,
-          value: DF.format(now, 'YYYY-MM-DD HH:mm:ss', { timeZone: zone }) + ' ' + DF.format(now, 'ZZ', { timeZone: zone })
+          value: DF.format(now, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: zone }),
+          sub: DF.format(now, 'ZZ', { timeZone: zone }) + ' · ' + DF.weekday(now, { timeZone: zone })
         });
       }
 
@@ -206,22 +287,43 @@
 
       var date = parsed.date;
       var zone = state.displayZone;
+      var unitLabel = parsed.unit === 's' ? '秒' : parsed.unit === 'ms' ? '毫秒' : '微秒';
 
       var items = [
-        { label: '本地时间', value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'local' }) + ' ' + DF.weekday(date, { timeZone: 'local' }) },
+        {
+          label: '本地时间',
+          value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'local' }),
+          sub: DF.weekday(date, { timeZone: 'local' }) + ' · ' + DF.format(date, 'ZZ', { timeZone: 'local' })
+        },
         { label: 'ISO 8601', value: DF.iso(date, { timeZone: zone }) },
-        { label: 'UTC', value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'UTC' }) },
+        { label: 'UTC', value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'UTC' }) + 'Z' },
         { label: 'RFC 2822', value: DF.rfc2822(date) },
-        { label: '相对现在', value: DF.relative(date) },
-        { label: '识别单位', value: parsed.unit === 's' ? '秒' : parsed.unit === 'ms' ? '毫秒' : '微秒' }
+        {
+          label: '相对现在',
+          value: DF.relative(date),
+          sub: parsed.unit === 'us' ? '微秒时间戳已按毫秒精度取整' : '识别单位：' + unitLabel
+        }
       ];
 
       if (zone !== 'local' && zone !== 'UTC') {
         items.splice(1, 0, {
           label: '所选时区',
-          value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: zone }) + ' ' + DF.format(date, 'ZZ', { timeZone: zone })
+          value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: zone }),
+          sub: DF.format(date, 'ZZ', { timeZone: zone }) + ' · ' + zone
         });
       }
+
+      /* 额外转换：秒 / 毫秒 / 微秒三种形态都能直接拿走 */
+      items.push({
+        label: '秒级',
+        value: String(Math.floor(date.getTime() / 1000)),
+        copy: String(Math.floor(date.getTime() / 1000))
+      });
+      items.push({
+        label: '毫秒级',
+        value: String(date.getTime()),
+        copy: String(date.getTime())
+      });
 
       replaceRows(tsRows, items);
     }
@@ -243,13 +345,25 @@
 
       var date = parsed.date;
       var seconds = Math.floor(date.getTime() / 1000);
+      var zone = state.displayZone;
 
-      replaceRows(dateRows, [
+      var items = [
         { label: '秒级', value: String(seconds), copy: String(seconds) },
         { label: '毫秒级', value: String(date.getTime()), copy: String(date.getTime()) },
-        { label: 'ISO 8601', value: DF.iso(date, { timeZone: state.displayZone }) },
+        { label: 'ISO 8601', value: DF.iso(date, { timeZone: zone }) },
+        {
+          label: 'UTC',
+          value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'UTC' }) + 'Z'
+        },
+        {
+          label: '本地时间',
+          value: DF.format(date, 'YYYY-MM-DD HH:mm:ss.SSS', { timeZone: 'local' }),
+          sub: DF.weekday(date, { timeZone: 'local' })
+        },
         { label: '相对现在', value: DF.relative(date) }
-      ]);
+      ];
+
+      replaceRows(dateRows, items);
     }
 
     /* ---------------- 事件 ---------------- */
@@ -302,6 +416,9 @@
     return {
       root: root,
       useNow: useNow,
+      find: function (options) {
+        return ensureFinder().show(options && options.replace);
+      },
       destroy: function () { clearInterval(timer); }
     };
   }
@@ -315,9 +432,16 @@
     desc: '秒 / 毫秒时间戳与日期互转，含相对时间与时区',
     icon: 'i-clock',
     keywords: ['timestamp', 'time', 'unix', '日期', '时间戳', '时区'],
-    shortcuts: [{ keys: ['Ctrl', 'Enter'], label: '用当前时间' }],
+    shortcuts: [
+      { keys: ['Ctrl', 'Enter'], label: '用当前时间' },
+      { keys: ['Ctrl', 'F'], label: '查找' }
+    ],
     run: function () {
       if (instance) instance.useNow();
+    },
+    find: function (options) {
+      if (instance) return instance.find(options);
+      return false;
     },
     mount: function (host) {
       instance = build();
