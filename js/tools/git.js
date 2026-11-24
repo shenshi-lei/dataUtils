@@ -16,67 +16,164 @@
   var COMMANDS = [
     {
       cmd: 'Git 常用命令速查（一整套）',
-      title: '从配置到提交推送的完整流程',
+      title: '从配置到提交推送的完整流程（含常见组合与坑）',
       cat: '工作流',
-      desc: '覆盖日常开发完整链路：配置、获取仓库、日常提交、分支合并、远程同步、暂存撤销与排查。示例中每条命令都带中文注释；组合命令请注意适用场景与风险。',
-      usage: '按场景复制需要的命令；# 后为注释说明。危险操作（reset --hard、clean -fdx、force push 等）执行前先确认。',
+      desc: '覆盖日常开发完整链路：配置、获取仓库、状态查看、暂存提交、分支合并、远程同步、撤销恢复、标签、暂存、排查与组合命令。示例中每条命令都带中文注释；危险命令已标注谨慎。',
+      usage: '按场景复制需要的命令；# 后为注释说明。危险操作（reset --hard、clean -fdx、force push、branch -D 等）执行前先确认。',
       example: '# ===== 1. 初始配置（首次使用）=====\n' +
+        'git --version                                      # 查看 Git 版本\n' +
         'git config --global user.name "Your Name"          # 设置提交用户名\n' +
         'git config --global user.email "you@example.com"   # 设置提交邮箱\n' +
         'git config --global init.defaultBranch main        # 新仓库默认分支名设为 main\n' +
+        'git config --global core.autocrlf input            # macOS/Linux 换行符设置（Windows 常用 true，按团队规范）\n' +
+        'git config --global pull.rebase false              # pull 默认 merge（团队若约定线性历史可改 true）\n' +
+        'git config --global alias.st "status -sb"          # 设置常用别名\n' +
         'git config --list --show-origin                    # 查看所有配置及其来源文件\n' +
         '\n' +
         '# ===== 2. 获取/创建仓库 =====\n' +
         'git init                                           # 在当前目录初始化仓库\n' +
+        'git init -b main                                   # 初始化并指定默认分支为 main\n' +
         'git clone <url>                                    # 克隆远程仓库（含完整历史）\n' +
+        'git clone <url> mydir                              # 克隆到指定目录\n' +
+        'git clone -b dev --single-branch <url>             # 只克隆指定分支\n' +
+        'git clone --depth 1 <url>                          # 浅克隆，只取最近提交（更快）\n' +
         'git clone --recurse-submodules <url>               # 克隆并初始化子模块\n' +
         '\n' +
-        '# ===== 3. 日常开发与提交 =====\n' +
+        '# ===== 3. 查看状态与差异 =====\n' +
+        'git status                                         # 查看详细工作区状态\n' +
         'git status -sb                                     # 简洁查看状态和当前分支\n' +
-        'git diff                                           # 查看未暂存改动\n' +
-        'git diff --staged                                  # 查看已暂存、将要提交的改动\n' +
-        'git add -A                                         # 暂存所有改动（新增/修改/删除）\n' +
-        'git add -A && git commit -m "feat: 描述"           # 暂存所有改动并提交（含新文件，常用组合）\n' +
+        'git diff                                           # 查看未暂存改动（工作区 vs 暂存区）\n' +
+        'git diff --staged                                  # 查看已暂存改动（暂存区 vs HEAD）\n' +
+        'git diff HEAD                                      # 查看工作区+暂存区相对 HEAD 的全部改动\n' +
+        'git diff --name-only                               # 只看改动文件名\n' +
+        'git diff --stat                                    # 查看改动统计\n' +
+        'git diff main..feature                             # 比较两个分支差异（两点语法）\n' +
+        'git diff main...feature                            # 比较 feature 相对 main 分叉点后的改动（三点语法）\n' +
+        '\n' +
+        '# ===== 4. 暂存与提交 =====\n' +
+        'git add file.txt                                   # 暂存指定文件\n' +
+        'git add .                                          # 暂存当前目录改动\n' +
+        'git add -A                                         # 暂存全仓库所有改动（新增/修改/删除）\n' +
+        'git add -u                                         # 只暂存已跟踪文件的修改/删除（不含新文件）\n' +
         'git add -p                                         # 交互式分块暂存，便于拆分提交\n' +
         'git commit -m "feat: 描述"                         # 提交暂存区\n' +
+        'git commit -m "标题" -m "正文"                     # 多段提交说明\n' +
         'git commit -am "fix: 描述"                         # 已跟踪文件：暂存+提交一步完成（不含新文件）\n' +
         'git commit -a -m "fix: 描述"                       # 同 commit -am，-a 与 -m 分开写\n' +
-        'git commit --amend --no-edit                       # 补充改动到上次提交，不改说明（会改写提交ID）\n' +
+        'git commit --amend -m "fix: 新说明"                # 修改最近一次提交说明（改写提交ID）\n' +
+        'git commit --amend --no-edit                       # 补充改动到上次提交，不改说明（改写提交ID）\n' +
+        'git commit --allow-empty -m "chore: trigger ci"    # 创建空提交（仅明确需要时使用）\n' +
         '\n' +
-        '# ===== 4. 分支与合并 =====\n' +
+        '# ===== 5. 常用组合命令 =====\n' +
+        'git add -A && git commit -m "feat: 描述"           # 暂存所有改动并提交（含新文件）\n' +
+        'git add . && git commit -m "feat: 描述"            # 暂存当前目录改动并提交\n' +
+        'git add -u && git commit -m "fix: 描述"            # 仅暂存已跟踪改动并提交\n' +
+        'git add -A && git commit -m "msg" && git push      # 暂存全部、提交并推送（谨慎确认范围）\n' +
+        'git commit -am "msg" && git push                   # 已跟踪改动快速提交并推送（不含新文件）\n' +
+        'git add -p && git commit -m "refactor: 拆分提交"   # 交互式拆分暂存并提交\n' +
+        '\n' +
+        '# ===== 6. 分支操作 =====\n' +
+        'git branch                                         # 列出本地分支\n' +
+        'git branch -a                                      # 查看本地和远程所有分支\n' +
+        'git branch -vv                                     # 查看分支及上游跟踪/ahead/behind\n' +
+        'git branch feature/demo                            # 创建分支（不切换）\n' +
         'git switch -c feature/demo                         # 创建并切换到新分支\n' +
-        'git switch main                                    # 切换回主分支\n' +
-        'git fetch origin                                   # 获取远程更新，不自动合并\n' +
-        'git merge origin/main                              # 合并远程主分支到当前分支\n' +
+        'git switch main                                    # 切换到已有分支\n' +
+        'git switch -                                       # 切回上一个分支\n' +
+        'git checkout -b feature/demo                       # 传统写法：创建并切换分支\n' +
+        'git branch -m old-name new-name                    # 重命名分支\n' +
+        'git branch -d feature/demo                         # 删除已合并本地分支\n' +
+        'git branch -D feature/demo                         # 强制删除本地分支（谨慎）\n' +
+        'git branch --merged                                # 查看已合并分支\n' +
+        'git branch --no-merged                             # 查看未合并分支\n' +
+        '\n' +
+        '# ===== 7. 合并、变基、拣选 =====\n' +
+        'git merge feature/demo                             # 合并指定分支到当前分支\n' +
+        'git merge --no-ff feature/demo                     # 禁用快进，保留合并提交\n' +
+        'git merge --squash feature/demo                    # 压缩为一次待提交改动\n' +
+        'git merge --abort                                  # 放弃合并\n' +
         'git rebase main                                    # 将当前分支变基到 main（公共分支慎用）\n' +
+        'git rebase -i HEAD~3                               # 交互式整理最近 3 次提交（改写历史）\n' +
+        'git rebase --continue                              # 解决冲突后继续 rebase\n' +
+        'git rebase --abort                                 # 放弃 rebase\n' +
+        'git cherry-pick <commit>                           # 拣选指定提交到当前分支\n' +
+        'git cherry-pick --continue                         # 解决冲突后继续 cherry-pick\n' +
+        'git cherry-pick --abort                            # 放弃 cherry-pick\n' +
         '\n' +
-        '# ===== 5. 远程同步 =====\n' +
+        '# ===== 8. 远程同步 =====\n' +
         'git remote -v                                      # 查看远程地址\n' +
-        'git fetch --all -p                                 # 获取所有远程并清理失效远程跟踪分支\n' +
-        'git pull --rebase                                  # 拉取并 rebase，减少无意义合并提交\n' +
+        'git remote add origin <url>                        # 添加远程仓库\n' +
+        'git remote set-url origin <new-url>                # 修改远程地址\n' +
+        'git remote remove origin                           # 删除本地远程配置（不删远程仓库）\n' +
+        'git fetch origin                                   # 获取远程更新，不自动合并\n' +
+        'git fetch --all -p                                 # 获取所有远程并清理失效远程跟踪引用\n' +
+        'git pull                                           # 拉取并整合（默认 fetch+merge）\n' +
+        'git pull --rebase                                  # 拉取并 rebase，保持线性历史\n' +
+        'git pull --ff-only                                 # 仅快进拉取，避免意外合并提交\n' +
+        'git push                                           # 推送当前跟踪分支\n' +
         'git push -u origin feature/demo                    # 首次推送并建立上游跟踪\n' +
-        'git push                                           # 后续推送当前跟踪分支\n' +
+        'git push -u origin HEAD                            # 推送当前分支并建立同名上游\n' +
+        'git push origin --delete feature/old               # 删除远程分支\n' +
+        'git push --force-with-lease                        # 更安全的强推（谨慎）\n' +
         '\n' +
-        '# ===== 6. 临时保存 / 撤销 / 排查 =====\n' +
-        'git stash push -u -m "wip"                         # 临时保存改动，包含未跟踪文件\n' +
-        'git stash pop                                      # 恢复最近暂存并移除记录\n' +
-        'git restore --staged <file>                        # 取消暂存，保留工作区修改\n' +
+        '# ===== 9. 撤销、恢复、清理 =====\n' +
         'git restore <file>                                 # 丢弃工作区修改（谨慎，不可恢复）\n' +
-        'git reflog -10                                     # 查看最近引用变动，误操作找回线索\n' +
-        'git log --oneline --graph --decorate --all -10     # 图形化查看最近提交',
+        'git restore --staged <file>                        # 取消暂存，保留工作区修改\n' +
+        'git restore --source=HEAD~1 <file>                 # 从指定提交恢复文件\n' +
+        'git reset --soft HEAD~1                            # 撤销提交，改动保留在暂存区\n' +
+        'git reset HEAD~1                                   # 撤销提交并取消暂存，改动保留工作区\n' +
+        'git reset --hard HEAD~1                            # 彻底回退并丢弃改动（危险）\n' +
+        'git revert <commit>                                # 生成反向提交，安全撤销（不改历史）\n' +
+        'git clean -nfd                                     # 预览将删除的未跟踪文件/目录\n' +
+        'git clean -fd                                      # 删除未跟踪文件/目录（谨慎）\n' +
+        'git clean -fdx                                     # 连忽略文件一起删除（非常谨慎）\n' +
+        '\n' +
+        '# ===== 10. 暂存现场（stash）=====\n' +
+        'git stash                                          # 快速暂存当前改动\n' +
+        'git stash push -u -m "wip"                         # 暂存改动，包含未跟踪文件\n' +
+        'git stash list                                     # 查看 stash 列表\n' +
+        'git stash show -p stash@{0}                        # 查看指定 stash 详细 diff\n' +
+        'git stash apply stash@{0}                          # 应用 stash，保留记录\n' +
+        'git stash pop                                      # 应用最近 stash 并移除记录\n' +
+        'git stash drop stash@{0}                           # 删除指定 stash\n' +
+        'git stash clear                                    # 清空所有 stash（谨慎）\n' +
+        '\n' +
+        '# ===== 11. 日志、排查、标签 =====\n' +
+        'git log --oneline -10                              # 最近 10 条简洁日志\n' +
+        'git log --oneline --graph --decorate --all         # 全分支图形化历史\n' +
+        'git log -p -- <file>                               # 查看某文件提交及改动\n' +
+        'git show <commit>                                  # 查看某次提交详情\n' +
+        'git blame -L 10,30 <file>                          # 查看指定行最近修改者\n' +
+        'git reflog -10                                     # 查看 HEAD/引用移动记录，误操作找回线索\n' +
+        'git bisect start                                   # 开始二分定位问题提交\n' +
+        'git bisect reset                                   # 结束二分并恢复原状态\n' +
+        'git tag                                            # 列出标签\n' +
+        'git tag -a v1.0.0 -m "发布 1.0.0"                  # 创建附注标签\n' +
+        'git push origin v1.0.0                             # 推送单个标签\n' +
+        'git push origin --tags                             # 推送所有标签（确认无临时标签）\n' +
+        '\n' +
+        '# ===== 12. 子模块/工作树/其他常用 =====\n' +
+        'git submodule update --init --recursive            # 初始化并更新子模块\n' +
+        'git worktree add ../hotfix hotfix/1.0              # 为分支创建独立工作树\n' +
+        'git worktree list                                  # 查看工作树列表\n' +
+        'git rm --cached <file>                             # 取消跟踪但保留本地文件\n' +
+        'git mv old.txt new.txt                             # 重命名/移动文件并暂存\n' +
+        'git remote add origin <url> && git push -u origin main  # 本地仓库首次关联远程并推送',
       pitfalls: '1. git commit -am / -a -m 只会暂存已跟踪文件的修改和删除，不包含新文件；包含新文件时用 git add -A && git commit -m "..."。\n' +
         '2. git add -A 暂存全仓库所有改动；git add . 暂存当前路径改动；git add -u 只暂存已跟踪文件修改/删除。提交前用 git status 确认范围。\n' +
-        '3. git commit --amend / git rebase 会改写提交历史（提交 ID 变化）：不要对已推送到公共分支的提交随意执行；若已推送，只能谨慎使用 git push --force-with-lease，并提前与协作者同步。\n' +
-        '3. git pull 默认是 fetch+merge，可能产生合并提交；git pull --rebase 历史更线性，但遇冲突要按提交逐个解决并 git rebase --continue。\n' +
-        '4. git restore <file> 和 git reset --hard 会丢弃改动：执行前用 git status / git diff / git stash 确认。误 reset --hard 可先看 git reflog 尝试找回。\n' +
-        '5. git stash pop 遇冲突时，stash 记录可能不会自动删除；解决冲突后检查 git stash list，必要时手动 git stash drop。\n' +
-        '6. git add -A 会暂存删除和新增：提交前检查 git status，避免误提交敏感文件、构建产物或本地配置；必要时完善 .gitignore。\n' +
-        '7. git clean -fdx 会删除未跟踪文件且包括忽略文件：先用 git clean -nfdx 预览。该操作通常不可恢复。\n' +
+        '3. git commit --amend / git rebase / reset 会改写提交历史（提交 ID 变化）：不要对已推送到公共分支的提交随意执行；若已推送，只能谨慎使用 git push --force-with-lease，并提前与协作者同步。\n' +
+        '4. git pull 默认是 fetch+merge，可能产生合并提交；git pull --rebase 历史更线性，但遇冲突要按提交逐个解决并 git rebase --continue。\n' +
+        '5. git restore <file>、git reset --hard、git clean -fdx 会丢弃/删除内容：执行前用 git status / git diff / git stash / git clean -nfdx 确认。误 reset --hard 可先看 git reflog 尝试找回。\n' +
+        '6. git stash pop 遇冲突时，stash 记录可能不会自动删除；解决冲突后检查 git stash list，必要时手动 git stash drop。\n' +
+        '7. git clean -fdx 会删除未跟踪文件且包括忽略文件；-n 预览，-f 才执行。该操作通常不可恢复。\n' +
         '8. 换行符/编码坑：Windows 与 Linux 协作注意 core.autocrlf、.gitattributes；否则可能出现整文件“假 diff”。\n' +
-        '9. 首次推送新分支用 git push -u origin <branch> 建立跟踪，否则后续 git push/pull 可能提示无上游。\n' +
+        '9. 首次推送新分支用 git push -u origin <branch> 或 git push -u origin HEAD 建立跟踪，否则后续 git push/pull 可能提示无上游。\n' +
         '10. 子模块坑：普通 clone 不会自动拉取子模块内容，需 --recurse-submodules 或 git submodule update --init --recursive。\n' +
-        '11. 敏感信息误提交：已推送的敏感信息不能只靠新提交覆盖，需专门清理历史；普通 revert 不能解决泄露问题。',
-      tags: ['一整套', '完整流程', '工作流', '组合命令', 'commit -am', 'commit -a -m', 'add -A && commit', 'cheatsheet', '常用', '坑', '注意事项', 'pull --rebase', 'force-with-lease', 'reflog', 'amend --no-edit']
+        '11. 敏感信息误提交：已推送的敏感信息不能只靠新提交覆盖，需专门清理历史；普通 revert 不能解决泄露问题。\n' +
+        '12. 强推风险：优先 --force-with-lease，禁用裸 --force 作为常规操作；强推前先 fetch 并与协作者沟通。\n' +
+        '13. 分离 HEAD：在 detached HEAD 下提交不属于分支，切走后可能丢失引用；需要保留时立即 git switch -c <branch>。\n' +
+        '14. 删除分支/标签：git branch -D、远程分支删除、远程标签删除都要先确认无依赖；删除前看 git branch --merged / git tag。',
+      tags: ['一整套', '完整流程', '工作流', '组合命令', 'commit -am', 'commit -a -m', 'add -A && commit', 'cheatsheet', '常用', '坑', '注意事项', 'pull --rebase', 'force-with-lease', 'reflog', 'amend --no-edit', 'reset', 'revert', 'stash', 'clean', 'tag', 'submodule', 'worktree']
     },
     {
       cmd: 'git add -A && git commit -m "msg"',
