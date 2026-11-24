@@ -316,13 +316,93 @@
     },
     {
       cmd: 'git branch',
-      title: '管理分支',
+      title: '列出本地分支',
       cat: '分支',
-      desc: '列出、创建、重命名或删除分支。分支用于并行开发，合适的分支策略能让协作更清晰。',
-      usage: 'git branch [分支名] [选项]',
-      example: 'git branch\n# 列出本地分支（* 表示当前）\n\ngit branch feature/login\n# 创建新分支（不切换）\n\ngit branch -a\n# 查看本地和远程所有分支\n\ngit branch -vv\n# 查看本地分支及其跟踪关系\n\ngit branch --merged\n# 查看已合并到当前分支的分支\n\ngit branch --no-merged\n# 查看尚未合并到当前分支的分支\n\ngit branch -m old-name new-name\n# 重命名分支\n\ngit branch -d feature/login\n# 删除已合并分支（-D 强制删除）',
-      pitfalls: '1. -d 只能删除已合并分支；-D 强制删除未合并分支，可能丢失未合并提交，删除前确认。\n2. 删除远程分支用 git push origin --delete <branch>，git branch -d 只删本地。\n3. 重命名已推送分支需同时处理远程：推送新分支名并删除旧远程分支，协作者也需更新本地跟踪。\n4. 分支名大小写在 Windows/macOS 默认文件系统上可能不敏感，跨平台协作注意命名一致。',
-      tags: ['分支', '列表', '创建', '删除', '重命名', 'branch', 'merged', 'vv']
+      desc: '列出本地分支，当前分支前带 *。不带参数时只显示本地分支。',
+      usage: 'git branch [--list]',
+      example: 'git branch\n# 列出本地分支\n\ngit branch --list "feature/*"\n# 按模式过滤分支',
+      pitfalls: '1. 只显示本地分支；要看远程分支用 git branch -r，全部用 git branch -a。\n2. 当前分支不能直接删除；需先切换到其他分支。',
+      tags: ['分支', '列表', 'branch', 'local']
+    },
+    {
+      cmd: 'git branch -a',
+      title: '查看所有分支（本地+远程）',
+      cat: '分支',
+      desc: '列出本地分支和远程跟踪分支，便于查看整体分支情况。',
+      usage: 'git branch -a',
+      example: 'git branch -a\n# 查看本地和远程所有分支\n\ngit branch -r\n# 只查看远程跟踪分支',
+      pitfalls: '1. 远程跟踪分支是本地缓存，可能过期；先 git fetch -p 再查看更准确。\n2. 看到的 remotes/origin/* 不是真正可直接编辑的本地分支，切换时通常用 git switch <name> 或创建跟踪分支。',
+      tags: ['分支', '全部', '远程', 'branch', '-a', '-r']
+    },
+    {
+      cmd: 'git branch -vv',
+      title: '查看分支跟踪关系',
+      cat: '分支',
+      desc: '显示本地分支、最近提交、上游跟踪分支及 ahead/behind 状态，适合排查推送/拉取状态。',
+      usage: 'git branch -vv',
+      example: 'git branch -vv\n# 查看本地分支及上游跟踪关系\n\ngit fetch -p && git branch -vv\n# 先同步远程状态再查看',
+      pitfalls: '1. ahead/behind 信息基于本地已知的远程跟踪状态；不 fetch 可能不准确。\n2. 上游显示 gone 表示远程分支已删除，确认后可清理本地分支。',
+      tags: ['分支', '跟踪', 'upstream', 'ahead', 'behind', 'branch', '-vv']
+    },
+    {
+      cmd: 'git branch <name>',
+      title: '创建新分支（不切换）',
+      cat: '分支',
+      desc: '基于当前提交创建新分支，但不会切换过去。需要创建并切换时用 git switch -c。',
+      usage: 'git branch <分支名> [起点]',
+      example: 'git branch feature/login\n# 基于当前提交创建分支\n\ngit branch feature/login main\n# 基于 main 创建分支',
+      pitfalls: '1. 只创建不切换；创建后当前分支不变。\n2. 分支名应符合团队规范，避免空格、特殊字符和大小写混乱。\n3. 需要立即开始开发通常用 git switch -c <name> 更方便。',
+      tags: ['分支', '创建', 'branch']
+    },
+    {
+      cmd: 'git branch -d',
+      title: '删除已合并本地分支',
+      cat: '分支',
+      desc: '删除已合并到当前分支（或上游）的本地分支。安全性较高，未合并分支会拒绝删除。',
+      usage: 'git branch -d <分支名>',
+      example: 'git branch -d feature/login\n# 删除已合并的本地分支\n\ngit branch --merged\n# 先查看可安全清理的分支',
+      pitfalls: '1. 只能删除已合并分支；未合并分支会报错。\n2. 只删除本地分支，不删除远程分支。\n3. 当前所在分支不能删除；先切换到其他分支。',
+      tags: ['分支', '删除', '已合并', 'branch', '-d']
+    },
+    {
+      cmd: 'git branch -D',
+      title: '强制删除本地分支',
+      cat: '分支',
+      desc: '强制删除本地分支，即使它未合并。用于丢弃不再需要的分支，但要确认不会丢失重要提交。',
+      usage: 'git branch -D <分支名>',
+      example: 'git branch -D experiment/tmp\n# 强制删除未合并分支（谨慎）',
+      pitfalls: '1. -D 会删除未合并分支，可能丢失未合并提交；删除前确认提交是否已备份或不再需要。\n2. 误删后可尝试通过 git reflog 找回提交哈希并重建分支，但不保证一定可找回。\n3. 只删本地，不删远程。',
+      tags: ['分支', '强制删除', '未合并', 'branch', '-D', '谨慎']
+    },
+    {
+      cmd: 'git branch -m',
+      title: '重命名分支',
+      cat: '分支',
+      desc: '重命名本地分支。可重命名当前分支或指定分支。',
+      usage: 'git branch -m [旧分支名] <新分支名>',
+      example: 'git branch -m old-name new-name\n# 重命名指定分支\n\ngit branch -m new-name\n# 重命名当前分支',
+      pitfalls: '1. 重命名已推送分支后，还需推送新分支并删除旧远程分支：git push origin -u new-name && git push origin --delete old-name。\n2. 协作者本地需要更新跟踪关系，否则可能继续使用旧分支名。\n3. 大小写修改在 Windows/macOS 上可能受文件系统大小写不敏感影响，必要时分两步改名。',
+      tags: ['分支', '重命名', 'rename', 'branch', '-m']
+    },
+    {
+      cmd: 'git branch --merged',
+      title: '查看已合并分支',
+      cat: '分支',
+      desc: '列出相对当前分支（或指定提交）已经合并的分支，常用于清理已完成分支。',
+      usage: 'git branch --merged [提交]',
+      example: 'git branch --merged\n# 查看已合并到当前分支的分支\n\ngit branch --merged main\n# 查看相对 main 已合并的分支',
+      pitfalls: '1. 判断基准是当前分支或指定提交；在不同分支执行结果不同。\n2. squash merge 后，原分支提交可能不被识别为 merged，清理前人工确认。\n3. 删除前仍要确认远程/CI/发布状态。',
+      tags: ['分支', 'merged', '已合并', '清理', 'branch']
+    },
+    {
+      cmd: 'git branch --no-merged',
+      title: '查看未合并分支',
+      cat: '分支',
+      desc: '列出相对当前分支（或指定提交）尚未合并的分支，便于确认哪些工作还未合入。',
+      usage: 'git branch --no-merged [提交]',
+      example: 'git branch --no-merged\n# 查看未合并到当前分支的分支\n\ngit branch --no-merged main\n# 查看相对 main 未合并的分支',
+      pitfalls: '1. 未合并不代表无用，可能是未完成或待发布分支；删除前确认。\n2. squash merge 场景下可能出现“实际已合并但仍显示未合并”的误判，需要人工核对。\n3. 判断基准不同结果不同，必要时显式指定 main/master。',
+      tags: ['分支', 'no-merged', '未合并', '清理', 'branch']
     },
     {
       cmd: 'git checkout',
@@ -360,19 +440,69 @@
       cat: '合并',
       desc: '将指定分支的历史合并到当前分支。若无分叉可快进；有分叉时会产生合并提交，冲突需手动解决后提交。',
       usage: 'git merge <分支名> [选项]',
-      example: 'git switch main\ngit merge feature/login\n# 将 feature/login 合并到当前 main\n\ngit merge --no-ff feature/login\n# 禁用快进，始终生成合并提交\n\ngit merge --squash feature/login\n# 将分支改动压缩为一次待提交改动\n\ngit merge --abort\n# 合并冲突时放弃本次合并',
+      example: 'git switch main\ngit merge feature/login\n# 将 feature/login 合并到当前 main\n\ngit merge --no-ff feature/login\n# 禁用快进，始终生成合并提交\n\ngit merge --squash feature/login\n# 将分支改动压缩为一次待提交改动',
       pitfalls: '1. 合并冲突后需手动解决文件，git add 标记已解决，再 git commit（或 git merge --continue）完成合并。\n2. --squash 会把改动合并为工作区改动，不会自动创建 merge commit，也不保留原分支提交历史。\n3. fast-forward 合并不会生成合并提交；团队若要保留分支历史可用 --no-ff。\n4. 合并前确认当前分支正确，并建议先 git status 保证工作区干净。',
       tags: ['合并', 'merge', '整合', '快进', '冲突', 'squash', 'no-ff']
+    },
+    {
+      cmd: 'git merge --abort',
+      title: '放弃合并',
+      cat: '合并',
+      desc: '在合并冲突或合并过程中放弃本次合并，尝试恢复到合并前状态。',
+      usage: 'git merge --abort',
+      example: 'git merge --abort\n# 放弃当前合并，回到合并前状态',
+      pitfalls: '1. 仅在合并进行中可用；没有进行中的合并会报错。\n2. 放弃前确认是否需要保留已手动解决的冲突结果。\n3. 如果工作区还有其他未提交改动，恢复效果需结合实际状态确认。',
+      tags: ['merge', 'abort', '放弃合并', '冲突']
+    },
+    {
+      cmd: 'git merge --continue',
+      title: '继续合并',
+      cat: '合并',
+      desc: '合并冲突解决并 git add 后，继续完成合并流程。',
+      usage: 'git merge --continue',
+      example: 'git add conflict-file.txt\ngit merge --continue\n# 解决冲突后继续合并',
+      pitfalls: '1. 继续前必须先解决冲突并 git add 标记已解决。\n2. 也可以用 git commit 完成合并提交；--continue 是更明确的写法。\n3. 若仍有未解决冲突，Git 会阻止继续。',
+      tags: ['merge', 'continue', '继续合并', '冲突']
     },
     {
       cmd: 'git rebase',
       title: '变基',
       cat: '合并',
       desc: '把当前分支的提交“搬移”到另一个基底之上，使历史更线性。交互式变基可整理提交。不要对已推送到共享远程的公共分支随意 rebase。',
-      usage: 'git rebase <基底分支> [-i] [--onto] [--abort|--continue]',
-      example: 'git rebase main\n# 将当前分支变基到 main 最新提交之上\n\ngit rebase -i HEAD~3\n# 交互式整理最近 3 次提交\n\ngit rebase --onto main server client\n# 将 client 上相对 server 的提交搬到 main 上\n\ngit rebase --continue\n# 解决冲突后继续\n\ngit rebase --abort\n# 放弃本次变基\n\ngit rebase --skip\n# 跳过当前冲突提交（谨慎）',
-      pitfalls: '1. rebase 会改写提交历史，提交 ID 会变化；不要对已推送到公共/共享分支随意 rebase。\n2. 冲突可能在多个提交上逐个出现；每次解决后 git add，再 git rebase --continue。\n3. --skip 会丢弃当前正在应用的提交，确认该提交不需要再使用。\n4. 交互式 rebase 可以 squash/reword/drop，但会重写历史；已推送分支需谨慎处理。\n5. rebase 前可先建备份分支：git branch backup/my-branch。',
+      usage: 'git rebase <基底分支> [-i] [--onto]',
+      example: 'git rebase main\n# 将当前分支变基到 main 最新提交之上\n\ngit rebase -i HEAD~3\n# 交互式整理最近 3 次提交\n\ngit rebase --onto main server client\n# 将 client 上相对 server 的提交搬到 main 上',
+      pitfalls: '1. rebase 会改写提交历史，提交 ID 会变化；不要对已推送到公共/共享分支随意 rebase。\n2. 冲突可能在多个提交上逐个出现；每次解决后 git add，再 git rebase --continue。\n3. 交互式 rebase 可以 squash/reword/drop，但会重写历史；已推送分支需谨慎处理。\n4. rebase 前可先建备份分支：git branch backup/my-branch。',
       tags: ['变基', '整理历史', '线性', 'interactive', 'rebase', 'onto']
+    },
+    {
+      cmd: 'git rebase --continue',
+      title: '继续变基',
+      cat: '合并',
+      desc: '变基过程中冲突解决并 git add 后，继续应用剩余提交。',
+      usage: 'git rebase --continue',
+      example: 'git add conflict-file.txt\ngit rebase --continue\n# 解决冲突后继续 rebase',
+      pitfalls: '1. 继续前必须解决冲突并 git add；否则 Git 会拒绝继续。\n2. rebase 冲突可能在多个提交上反复出现，需耐心逐个处理。\n3. 如果发现当前提交不应保留，考虑 --skip（谨慎）。',
+      tags: ['rebase', 'continue', '继续变基', '冲突']
+    },
+    {
+      cmd: 'git rebase --abort',
+      title: '放弃变基',
+      cat: '合并',
+      desc: '放弃当前 rebase 过程，尝试恢复到 rebase 开始前的状态。',
+      usage: 'git rebase --abort',
+      example: 'git rebase --abort\n# 放弃本次 rebase',
+      pitfalls: '1. 仅在 rebase 进行中可用。\n2. 放弃前确认是否需要保留已解决的冲突结果。\n3. rebase 复杂冲突处理不下去时，abort 是安全退出方式。',
+      tags: ['rebase', 'abort', '放弃变基', '回退']
+    },
+    {
+      cmd: 'git rebase --skip',
+      title: '跳过当前变基提交',
+      cat: '合并',
+      desc: '在 rebase 过程中跳过当前正在应用的提交。该提交的改动将不会出现在 rebase 后的历史中。',
+      usage: 'git rebase --skip',
+      example: 'git rebase --skip\n# 跳过当前冲突提交（谨慎）',
+      pitfalls: '1. --skip 会丢弃当前提交引入的改动，使用前确认该提交确实不需要。\n2. 误 skip 后可通过 reflog 找回原提交，但操作成本高。\n3. 如果只是冲突难解，通常先尝试正确解决冲突而不是 skip。',
+      tags: ['rebase', 'skip', '跳过提交', '谨慎']
     },
     {
       cmd: 'git cherry-pick',
@@ -380,9 +510,39 @@
       cat: '合并',
       desc: '把某个或某些已有提交的改动应用到当前分支，生成新的提交。适合只引入特定修复而不合并整个分支。',
       usage: 'git cherry-pick <提交ID...> [选项]',
-      example: 'git cherry-pick abc1234\n# 将指定提交应用到当前分支\n\ngit cherry-pick A B C\n# 按顺序应用多个提交\n\ngit cherry-pick A^..B\n# 拣选一个范围内的提交（注意左开右闭）\n\ngit cherry-pick -n abc1234\n# 只应用改动不自动提交\n\ngit cherry-pick --continue\n# 解决冲突后继续\n\ngit cherry-pick --abort\n# 放弃本次拣选',
+      example: 'git cherry-pick abc1234\n# 将指定提交应用到当前分支\n\ngit cherry-pick A B C\n# 按顺序应用多个提交\n\ngit cherry-pick A^..B\n# 拣选一个范围内的提交（注意左开右闭）\n\ngit cherry-pick -n abc1234\n# 只应用改动不自动提交',
       pitfalls: '1. cherry-pick 会生成新的提交 ID，即使内容相同；后续 merge 原分支时可能出现重复或冲突。\n2. 冲突后解决并 git add，再 git cherry-pick --continue；放弃用 --abort。\n3. 拣选多个提交时按顺序应用；范围语法 A^..B 容易写错，先用 git log --oneline A^..B 确认。\n4. 拣选 merge commit 需额外指定 -m 主线，行为较复杂，谨慎使用。',
       tags: ['拣选', '挑选', '提交', '应用', 'cherry', '范围']
+    },
+    {
+      cmd: 'git cherry-pick --continue',
+      title: '继续拣选提交',
+      cat: '合并',
+      desc: 'cherry-pick 冲突解决并 git add 后，继续应用剩余提交。',
+      usage: 'git cherry-pick --continue',
+      example: 'git add conflict-file.txt\ngit cherry-pick --continue\n# 解决冲突后继续 cherry-pick',
+      pitfalls: '1. 继续前必须先解决冲突并 git add。\n2. 多提交 cherry-pick 时，可能会多次遇到冲突。\n3. 如果当前冲突提交不想要，可考虑 --skip（谨慎）。',
+      tags: ['cherry-pick', 'continue', '继续', '冲突']
+    },
+    {
+      cmd: 'git cherry-pick --abort',
+      title: '放弃拣选提交',
+      cat: '合并',
+      desc: '放弃当前 cherry-pick 过程，尝试恢复到操作前状态。',
+      usage: 'git cherry-pick --abort',
+      example: 'git cherry-pick --abort\n# 放弃本次 cherry-pick',
+      pitfalls: '1. 仅在 cherry-pick 进行中可用。\n2. 放弃前确认是否需要保留已手动解决的冲突结果。\n3. 复杂冲突无法快速解决时，abort 是安全退出方式。',
+      tags: ['cherry-pick', 'abort', '放弃', '冲突']
+    },
+    {
+      cmd: 'git cherry-pick --skip',
+      title: '跳过当前拣选提交',
+      cat: '合并',
+      desc: '在 cherry-pick 多个提交时跳过当前冲突提交，继续处理后续提交。',
+      usage: 'git cherry-pick --skip',
+      example: 'git cherry-pick --skip\n# 跳过当前冲突提交（谨慎）',
+      pitfalls: '1. 会跳过当前提交，意味着该提交改动不会被应用。\n2. 跳过前确认该提交确实不需要，或后续会单独处理。\n3. 误 skip 后可通过 reflog/原提交哈希重新 cherry-pick。',
+      tags: ['cherry-pick', 'skip', '跳过', '谨慎']
     },
     {
       cmd: 'git pull',
@@ -395,6 +555,26 @@
       tags: ['拉取', '更新', '同步', 'fetch', 'merge', 'rebase', 'ff-only']
     },
     {
+      cmd: 'git pull --rebase',
+      title: '拉取并变基（远程类单列）',
+      cat: '远程',
+      desc: '拉取远程更新后将本地提交变基到远程分支之上，保持线性历史。与工作流中的组合命令对应，这里作为远程单命令单列。',
+      usage: 'git pull --rebase [远程名] [分支名]',
+      example: 'git pull --rebase\n# 拉取当前跟踪分支并 rebase\n\ngit pull --rebase origin main\n# 指定远程和分支\n\ngit pull --rebase --autostash\n# 自动暂存并恢复本地未提交改动',
+      pitfalls: '1. 会改写本地未推送提交的基底；不要对公共分支随意 rebase。\n2. 冲突可能按提交逐个出现：解决后 git add + git rebase --continue。\n3. 工作区不干净时先 stash/commit，或使用 --autostash。',
+      tags: ['pull', 'rebase', '同步', '线性历史', '远程']
+    },
+    {
+      cmd: 'git pull --ff-only',
+      title: '仅快进拉取',
+      cat: '远程',
+      desc: '只允许 fast-forward 合并的 pull。如果远程和本地有分叉，会失败而不是自动创建合并提交。',
+      usage: 'git pull --ff-only [远程名] [分支名]',
+      example: 'git pull --ff-only\n# 仅在可快进时拉取\n\ngit pull --ff-only origin main\n# 指定远程分支',
+      pitfalls: '1. 有分叉时会失败，这是保护行为；需要你决定 merge 还是 rebase。\n2. 适合希望避免意外合并提交的场景。\n3. 失败后可用 git pull --rebase 或普通 git pull，再处理冲突。',
+      tags: ['pull', 'ff-only', '快进', '同步', '远程']
+    },
+    {
       cmd: 'git fetch',
       title: '获取远程更新（不合并）',
       cat: '远程',
@@ -403,6 +583,16 @@
       example: 'git fetch origin\n# 获取 origin 的更新\n\ngit fetch --all\n# 获取所有远程的更新\n\ngit fetch -p\n# 同时清理已在远程删除的分支引用（prune）\n\ngit fetch --all -p\n# 获取所有远程并清理失效引用\n\ngit fetch --tags\n# 获取标签\n\ngit log HEAD..origin/main\n# fetch 后比较本地与远程差异',
       pitfalls: '1. fetch 只下载数据，不会修改当前工作分支；需要合并/变基时再执行 merge/rebase。\n2. -p/--prune 只清理本地的远程跟踪引用，不会删除本地分支。\n3. fetch 后可用 git status -sb 或 git log HEAD..origin/main 查看落后情况。\n4. 网络或权限问题会导致 fetch 失败；检查 git remote -v 和认证配置。',
       tags: ['获取', '下载', '远程', '同步', 'prune', 'fetch -p']
+    },
+    {
+      cmd: 'git fetch --all -p',
+      title: '获取所有远程并清理失效引用',
+      cat: '远程',
+      desc: '从所有远程获取更新，并清理本地已失效的远程跟踪分支引用。适合同步远程状态前的常用命令。',
+      usage: 'git fetch --all -p',
+      example: 'git fetch --all -p\n# 获取所有远程更新并 prune 失效引用\n\ngit branch -vv\n# 随后检查本地分支上游状态',
+      pitfalls: '1. 只清理远程跟踪引用，不删除本地分支。\n2. 多远程仓库场景下会请求所有远程，耗时可能更长。\n3. 清理后本地分支可能显示 gone，需要手动确认是否删除本地分支。',
+      tags: ['fetch', 'all', 'prune', '远程', '同步']
     },
     {
       cmd: 'git push',
@@ -415,6 +605,36 @@
       tags: ['推送', '上传', '发布', 'remote', 'upstream', 'delete', 'force-with-lease']
     },
     {
+      cmd: 'git push -u origin <branch>',
+      title: '首次推送并设置上游分支',
+      cat: '远程',
+      desc: '将本地分支推送到远程并建立跟踪关系，之后可直接使用 git push / git pull。',
+      usage: 'git push -u origin <分支名>',
+      example: 'git push -u origin feature/login\n# 首次推送并建立跟踪\n\ngit push -u origin HEAD\n# 推送当前分支并建立同名上游',
+      pitfalls: '1. 不设置 upstream 时，后续 push/pull 可能需要手动指定远程和分支。\n2. 远程分支名建议与本地一致，除非团队有明确命名规则。\n3. 推送前确认当前分支就是你要发布的分支。',
+      tags: ['push', 'upstream', '首次推送', '远程', '-u']
+    },
+    {
+      cmd: 'git push --force-with-lease',
+      title: '更安全的强制推送',
+      cat: '远程',
+      desc: '在确认远程分支未被他人更新的前提下强制推送。比 --force 更安全，但仍会改写远程历史。',
+      usage: 'git push --force-with-lease [远程名] [分支名]',
+      example: 'git push --force-with-lease\n# 更安全的强推\n\ngit push --force-with-lease origin feature/my-branch\n# 指定远程分支强推',
+      pitfalls: '1. 仍然会改写远程历史；使用前确认分支是个人分支或已与协作者沟通。\n2. lease 保护依赖本地远程跟踪引用；推送前建议先 git fetch。\n3. 如果远程有他人新提交，push 会被拒绝，这是预期保护行为。\n4. 公共主分支通常禁止 force push，应遵循仓库保护规则。',
+      tags: ['push', 'force-with-lease', '强推', '改写历史', '谨慎', '远程']
+    },
+    {
+      cmd: 'git push origin --delete <branch>',
+      title: '删除远程分支',
+      cat: '远程',
+      desc: '删除远程仓库中的指定分支。不会删除本地分支。',
+      usage: 'git push <远程名> --delete <分支名>',
+      example: 'git push origin --delete feature/old\n# 删除远程分支\n\ngit fetch -p\n# 清理本地失效远程跟踪引用',
+      pitfalls: '1. 删除前确认该分支已合并或不再需要；远程分支删除后其他人将无法直接拉取该分支。\n2. 只删远程分支，本地分支需用 git branch -d/-D。\n3. 受保护分支可能无法删除，需要在远程平台调整保护规则或权限。',
+      tags: ['push', 'delete', '远程分支', '删除', '远程']
+    },
+    {
       cmd: 'git remote',
       title: '管理远程仓库',
       cat: '远程',
@@ -423,6 +643,106 @@
       example: 'git remote -v\n# 查看远程名称和地址\n\ngit remote add origin <url>\n# 添加远程仓库\n\ngit remote set-url origin <new-url>\n# 修改远程地址\n\ngit remote rename origin upstream\n# 重命名远程\n\ngit remote show origin\n# 查看远程详细信息\n\ngit remote prune origin\n# 清理本地已失效的 origin 远程跟踪分支\n\ngit remote remove origin\n# 删除远程配置',
       pitfalls: '1. git remote remove 只删除本地远程配置，不会删除远程仓库本身。\n2. set-url 后用 git remote -v 验证；HTTPS/SSH 地址切换时注意认证方式。\n3. remote prune origin 与 git fetch -p 类似，都是清理失效远程跟踪引用，不删除本地分支。\n4. 多远程协作（origin/upstream）时注意 pull/push 目标，避免推错仓库。',
       tags: ['远程', 'origin', '地址', '仓库', 'show', 'prune']
+    },
+    {
+      cmd: 'git remote add',
+      title: '添加远程仓库',
+      cat: '远程',
+      desc: '为本地仓库添加一个远程仓库配置，常用于把本地 init 的仓库关联到 GitHub/GitLab 等远程。',
+      usage: 'git remote add <远程名> <仓库URL>',
+      example: 'git remote add origin git@github.com:user/repo.git\n# 添加名为 origin 的远程\n\ngit remote -v\n# 验证远程配置',
+      pitfalls: '1. 同名远程已存在时 add 会失败；需改用 git remote set-url 或先 remove。\n2. 添加远程只是配置关联，不会自动 fetch/push。\n3. URL 写错会导致后续 fetch/push 失败，添加后用 git remote -v 检查。',
+      tags: ['远程', 'add', 'origin', '关联仓库', 'remote']
+    },
+    {
+      cmd: 'git remote -v',
+      title: '查看远程仓库地址',
+      cat: '远程',
+      desc: '列出本地配置的远程仓库名称及其 fetch/push 地址，是排查远程问题的第一步。',
+      usage: 'git remote -v',
+      example: 'git remote -v\n# 查看所有远程的 fetch/push 地址',
+      pitfalls: '1. 看不到预期远程说明尚未配置；用 git remote add 添加。\n2. fetch 和 push 地址可能不同（少见但可能）；排查推送问题时要看 push 地址。\n3. 这只显示本地配置，不代表远程仓库可访问；连通性问题还要检查网络/权限。',
+      tags: ['远程', '查看', '地址', 'remote', '-v']
+    },
+    {
+      cmd: 'git remote show',
+      title: '查看远程详细信息',
+      cat: '远程',
+      desc: '显示指定远程的详细信息，包括 fetch/push URL、HEAD 分支、远程分支跟踪关系和 push/pull 配置。',
+      usage: 'git remote show <远程名>',
+      example: 'git remote show origin\n# 查看 origin 的详细信息',
+      pitfalls: '1. 该命令可能需要访问远程仓库；离线或无权限时信息不完整。\n2. 输出较多，重点关注 HEAD branch、local/remote 分支跟踪状态。\n3. 远程已删除分支仍可能在本地显示 stale，可用 git fetch -p 或 git remote prune 清理。',
+      tags: ['远程', 'show', '详情', '跟踪', 'remote']
+    },
+    {
+      cmd: 'git remote rename',
+      title: '重命名远程仓库',
+      cat: '远程',
+      desc: '修改本地远程配置的名称，同时会更新对应的远程跟踪分支引用名称。',
+      usage: 'git remote rename <旧名称> <新名称>',
+      example: 'git remote rename origin upstream\n# 将 origin 重命名为 upstream\n\ngit remote -v\n# 验证重命名结果',
+      pitfalls: '1. 重命名后，原远程跟踪分支引用会变化（如 origin/main -> upstream/main）。\n2. 本地分支的 upstream 配置可能需要重新确认；用 git branch -vv 检查。\n3. 脚本/CI 若写死远程名，重命名后需要同步修改。',
+      tags: ['远程', 'rename', '重命名', 'remote']
+    },
+    {
+      cmd: 'git remote set-url',
+      title: '修改远程仓库地址',
+      cat: '远程',
+      desc: '更新已有远程的 URL，常用于 HTTPS/SSH 切换、仓库迁移或远程地址变更。',
+      usage: 'git remote set-url <远程名> <新URL>',
+      example: 'git remote set-url origin git@github.com:user/repo.git\n# 将 origin 改为 SSH 地址\n\ngit remote -v\n# 验证修改结果',
+      pitfalls: '1. 修改后用 git remote -v 验证 fetch/push 地址是否符合预期。\n2. 从 HTTPS 切到 SSH（或反向）时，认证方式也会变化，确保凭据/SSH key 已配置。\n3. 只改本地配置，不影响远程仓库；确认新 URL 指向正确仓库。',
+      tags: ['远程', 'set-url', '修改地址', 'SSH', 'HTTPS', 'remote']
+    },
+    {
+      cmd: 'git remote remove',
+      title: '移除远程仓库绑定',
+      cat: '远程',
+      desc: '移除本地仓库与指定远程仓库的关联配置，仅删除本地的远程引用，不会删除远程仓库本身，也不会影响本地提交历史。取消后无法再对该远程执行 fetch/pull/push，除非重新添加。',
+      usage: 'git remote remove <远程名>\n# 等价旧写法：git remote rm <远程名>',
+      example: 'git remote -v\n# 先查看当前远程配置\n\ngit remote remove origin\n# 取消与 origin 的绑定\n\ngit remote -v\n# 再次确认，origin 应已消失\n\n# 如需重新绑定其他地址\n# git remote add origin <new-url>',
+      pitfalls: '1. 只删除本地远程配置，不会删除远程仓库，也不会删除本地提交。\n2. 移除后本地分支的 upstream 可能失效；用 git branch -vv 检查。\n3. 如果只是临时不推送，不必 remove；真正需要解除绑定时再操作。',
+      tags: ['远程', '取消绑定', '解绑', '删除远程', 'remove', 'rm', 'origin', 'remote']
+    },
+    {
+      cmd: 'git remote prune',
+      title: '清理失效远程跟踪分支',
+      cat: '远程',
+      desc: '删除本地已经不存在于远程的远程跟踪引用（如 origin/old-branch）。不会删除本地分支。',
+      usage: 'git remote prune <远程名>',
+      example: 'git remote prune origin\n# 清理 origin 下失效的远程跟踪引用\n\ngit fetch -p\n# 等价的常用写法（fetch 同时 prune）',
+      pitfalls: '1. 只清理远程跟踪引用，不删除本地分支；本地 gone 分支需手动 git branch -d。\n2. prune 前可用 git remote show origin 查看 stale 分支。\n3. 团队协作中远程分支被删除是正常现象；清理前确认本地是否还有未合并工作。',
+      tags: ['远程', 'prune', '清理', 'stale', 'remote']
+    },
+    {
+      cmd: 'git remote get-url',
+      title: '查看远程仓库 URL',
+      cat: '远程',
+      desc: '输出指定远程的 URL。适合脚本中读取远程地址，或快速确认单个远程配置。',
+      usage: 'git remote get-url [--push] <远程名>',
+      example: 'git remote get-url origin\n# 查看 origin 的 fetch URL\n\ngit remote get-url --push origin\n# 查看 origin 的 push URL',
+      pitfalls: '1. 只输出 URL，不检查连通性。\n2. push URL 可能与 fetch URL 不同；排查推送问题时用 --push。\n3. 远程不存在时会报错。',
+      tags: ['远程', 'get-url', 'URL', '查看', 'remote']
+    },
+    {
+      cmd: 'git remote set-head',
+      title: '设置远程 HEAD 引用',
+      cat: '远程',
+      desc: '设置或删除本地的远程 HEAD 引用（如 origin/HEAD），用于确定远程默认分支。',
+      usage: 'git remote set-head <远程名> (-a | -d | <分支>)',
+      example: 'git remote set-head origin -a\n# 自动查询远程并设置 origin/HEAD\n\ngit remote set-head origin main\n# 显式设置 origin/HEAD 为 main\n\ngit remote set-head origin -d\n# 删除 origin/HEAD 引用',
+      pitfalls: '1. origin/HEAD 只是本地引用，不改变远程仓库真实默认分支。\n2. 自动设置 -a 需要能访问远程。\n3. 日常开发很少需要手动改它；遇到 origin/HEAD 指向异常时再处理。',
+      tags: ['远程', 'set-head', 'HEAD', '默认分支', 'remote']
+    },
+    {
+      cmd: '删除本地仓库实例（删除目录）',
+      title: '本地删除 Git 仓库实例',
+      cat: '基础',
+      desc: '本地 Git “实例”就是仓库所在目录。删除本地实例即删除该目录，包含工作区文件和 .git 历史。此操作不可恢复，请先确认没有未推送提交、未备份改动或未保存的 stash；如只想解除远程绑定，请使用 git remote remove。',
+      usage: '# Windows PowerShell\nRemove-Item -Recurse -Force <仓库目录>\n\n# Linux / macOS / Git Bash\nrm -rf <仓库目录>',
+      example: '# 先确认当前仓库状态，避免丢失未推送内容\ngit status\ngit remote -v\ngit stash list\n\n# Windows PowerShell：删除本地仓库目录\nRemove-Item -Recurse -Force .\\my-repo\n\n# Linux / macOS / Git Bash：删除本地仓库目录\nrm -rf ./my-repo',
+      pitfalls: '1. 删除目录会同时删除 .git 历史和工作区文件，通常不可恢复。\n2. 删除前检查未推送提交：git log --branches --not --remotes 或 git status -sb。\n3. 只想解除远程绑定用 git remote remove；只想清理未跟踪文件用 git clean（谨慎）。\n4. 当前终端/IDE 如果正占用该目录，删除可能失败；先关闭占用程序。',
+      tags: ['删除', '本地', '实例', '仓库', '目录', 'rm', 'Remove-Item', '清理']
     },
     {
       cmd: 'git ls-remote',
@@ -435,13 +755,43 @@
     },
     {
       cmd: 'git reset',
-      title: '重置 HEAD / 暂存区',
+      title: '重置 HEAD / 暂存区（通用）',
       cat: '撤销',
       desc: '移动当前分支指针并可选择性地重置暂存区和工作区。--soft 只移动 HEAD；--mixed（默认）重置暂存区；--hard 同时丢弃工作区改动（危险）。',
       usage: 'git reset [--soft|--mixed|--hard] <提交> [-- 路径]',
-      example: 'git reset --soft HEAD~1\n# 撤销最近一次提交，改动保留在暂存区\n\ngit reset HEAD~1\n# 撤销提交且取消暂存，改动保留在工作区\n\ngit reset --hard HEAD~1\n# 彻底回退并丢弃改动（谨慎）\n\ngit reset HEAD -- file.txt\n# 取消暂存指定文件（旧写法，等价于 git restore --staged）\n\ngit reset --hard origin/main\n# 强制对齐到远程分支（会丢本地改动）',
+      example: 'git reset --soft HEAD~1\n# 撤销最近一次提交，改动保留在暂存区\n\ngit reset HEAD~1\n# 撤销提交且取消暂存，改动保留在工作区\n\ngit reset --hard HEAD~1\n# 彻底回退并丢弃改动（谨慎）\n\ngit reset HEAD -- file.txt\n# 取消暂存指定文件（旧写法，等价于 git restore --staged）',
       pitfalls: '1. --hard 会丢弃工作区和暂存区未提交改动，通常不可恢复；执行前先 git status / git stash。\n2. reset 会移动分支指针；对已推送公共分支 reset 后再 push 通常需要强推，非常危险。\n3. 误 reset --hard 后，先用 git reflog 查找之前的 HEAD，再 git reset --hard HEAD@{n} 尝试找回（仅限本地 reflog 未过期）。\n4. 取消暂存文件优先使用更语义化的 git restore --staged <file>（新 Git）。',
-      tags: ['回退', '撤销', '重置', 'soft', 'hard', 'HEAD', 'reflog']
+      tags: ['回退', '撤销', '重置', 'soft', 'mixed', 'hard', 'HEAD']
+    },
+    {
+      cmd: 'git reset --soft',
+      title: '软重置（保留暂存和工作区）',
+      cat: '撤销',
+      desc: '只移动 HEAD 到指定提交，不改暂存区和工作区。常用于“撤销提交但保留改动继续编辑/重新提交”。',
+      usage: 'git reset --soft <提交>',
+      example: 'git reset --soft HEAD~1\n# 撤销最近一次提交，改动保留在暂存区\n\ngit reset --soft origin/main\n# 移动 HEAD 到 origin/main，保留本地改动在暂存区/工作区状态',
+      pitfalls: '1. 只撤销提交，不撤销改动；改动仍在暂存区。\n2. 对已推送提交 soft reset 后重新提交会改写历史，推送需谨慎。\n3. 适合重做提交说明或合并多个提交前的准备。',
+      tags: ['reset', 'soft', '撤销提交', '保留暂存']
+    },
+    {
+      cmd: 'git reset --mixed',
+      title: '混合重置（默认，取消暂存）',
+      cat: '撤销',
+      desc: '移动 HEAD 并重置暂存区，但保留工作区改动。是 git reset 的默认模式。',
+      usage: 'git reset --mixed <提交> | git reset <提交>',
+      example: 'git reset HEAD~1\n# 默认 mixed：撤销提交并取消暂存，改动保留在工作区\n\ngit reset --mixed HEAD~1\n# 显式写法，效果相同',
+      pitfalls: '1. 会取消暂存，但不会丢弃工作区改动。\n2. 如果想连工作区一起丢弃，用 --hard（谨慎）；如果想保留暂存，用 --soft。\n3. 对已推送提交 reset 后再推送会涉及历史改写。',
+      tags: ['reset', 'mixed', '取消暂存', '默认']
+    },
+    {
+      cmd: 'git reset --hard',
+      title: '硬重置（丢弃改动，危险）',
+      cat: '撤销',
+      desc: '移动 HEAD 并重置暂存区和工作区，丢弃未提交改动。常用于彻底回退到某个提交状态。',
+      usage: 'git reset --hard <提交>',
+      example: 'git reset --hard HEAD~1\n# 彻底回退一个提交（谨慎）\n\ngit reset --hard origin/main\n# 强制对齐到远程分支（会丢本地改动）',
+      pitfalls: '1. 会丢弃工作区和暂存区未提交改动，通常不可恢复；执行前先 git status / git stash。\n2. 对已推送公共分支执行后再强推风险极高。\n3. 误操作后立即用 git reflog 查找旧 HEAD，并用 git reset --hard HEAD@{n} 或创建 rescue 分支尝试找回。',
+      tags: ['reset', 'hard', '危险', '丢弃改动', '回退']
     },
     {
       cmd: 'git revert',
@@ -449,9 +799,29 @@
       cat: '撤销',
       desc: '创建一个新的提交来抵消指定提交的改动，不改写历史。适合撤销已经推送到公共分支的提交。',
       usage: 'git revert <提交ID...> [选项]',
-      example: 'git revert abc1234\n# 生成反向提交撤销指定改动\n\ngit revert HEAD\n# 撤销最近一次提交\n\ngit revert -n abc1234\n# 只应用反向改动，不自动提交\n\ngit revert -m 1 <merge-commit>\n# 回滚合并提交（需指定主线）\n\ngit revert --abort\n# 放弃本次回滚',
+      example: 'git revert abc1234\n# 生成反向提交撤销指定改动\n\ngit revert HEAD\n# 撤销最近一次提交\n\ngit revert -n abc1234\n# 只应用反向改动，不自动提交\n\ngit revert -m 1 <merge-commit>\n# 回滚合并提交（需指定主线）',
       pitfalls: '1. revert 不改写历史，适合公共分支；但它会新增一个“反向提交”，历史中原提交仍存在。\n2. 回滚 merge commit 必须指定 -m 主线（通常 1 代表保留的主线）；选错会导致结果不符合预期。\n3. revert merge commit 后，再次合并同一分支时 Git 可能认为改动已合并，需要额外处理（如 revert 那个 revert）。\n4. 有冲突时解决后 git add 并 git revert --continue；放弃用 --abort。',
       tags: ['撤销', '回滚', '反做', '安全', '公共分支', 'merge commit']
+    },
+    {
+      cmd: 'git revert --continue',
+      title: '继续反做提交',
+      cat: '撤销',
+      desc: 'revert 冲突解决并 git add 后，继续完成反做提交。',
+      usage: 'git revert --continue',
+      example: 'git add conflict-file.txt\ngit revert --continue\n# 解决冲突后继续 revert',
+      pitfalls: '1. 继续前必须先解决冲突并 git add。\n2. 多个提交 revert 时可能逐个出现冲突。\n3. 若要放弃本次 revert，用 git revert --abort。',
+      tags: ['revert', 'continue', '继续', '冲突']
+    },
+    {
+      cmd: 'git revert --abort',
+      title: '放弃反做提交',
+      cat: '撤销',
+      desc: '放弃当前 revert 过程，恢复到 revert 开始前的状态。',
+      usage: 'git revert --abort',
+      example: 'git revert --abort\n# 放弃本次 revert',
+      pitfalls: '1. 仅在 revert 进行中可用。\n2. 放弃前确认是否需要保留已手动解决的冲突结果。\n3. 冲突复杂时 abort 是安全退出方式。',
+      tags: ['revert', 'abort', '放弃', '冲突']
     },
     {
       cmd: 'git clean',
@@ -483,31 +853,163 @@
     },
     {
       cmd: 'git stash',
-      title: '暂存未完成改动',
+      title: '暂存当前改动（快速保存）',
       cat: '暂存',
-      desc: '把当前工作区和暂存区的改动临时保存起来，使工作区变干净，便于切换分支或处理其他任务，之后可恢复。',
-      usage: 'git stash [push|pop|apply|list|show|drop|clear]',
-      example: 'git stash\n# 临时保存当前改动\n\ngit stash push -m "临时保存登录页修改"\n# 带说明保存\n\ngit stash push -u -m "含未跟踪文件"\n# 同时保存未跟踪文件\n\ngit stash list\n# 查看暂存列表\n\ngit stash show -p stash@{0}\n# 查看某条暂存的具体改动\n\ngit stash pop\n# 恢复最近一次暂存并从列表移除\n\ngit stash apply stash@{1}\n# 恢复指定暂存但保留记录\n\ngit stash branch fix-bug stash@{0}\n# 基于暂存创建并切换到新分支',
-      pitfalls: '1. 默认 stash 不包含未跟踪文件；需要包含新文件用 -u/--include-untracked，包含忽略文件用 -a/--all（谨慎）。\n2. git stash pop 冲突时，stash 记录可能不会自动删除；解决冲突后检查 git stash list，必要时手动 drop。\n3. apply 保留 stash 记录，pop 会移除记录；不确定能否顺利恢复时先用 apply。\n4. stash 不是长期备份；重要改动还是尽快 commit 或建分支。',
-      tags: ['暂存', '搁置', '临时', 'stash', 'pop', 'apply', '-u']
+      desc: '把当前工作区和暂存区的改动临时保存起来，使工作区变干净。等价于 git stash push 的常见简写用法。',
+      usage: 'git stash [push] [-m "说明"] [-u|-a]',
+      example: 'git stash\n# 临时保存当前改动\n\ngit stash -m "临时保存登录页修改"\n# 带说明保存\n\ngit stash -u\n# 同时保存未跟踪文件（谨慎确认）',
+      pitfalls: '1. 默认不包含未跟踪文件；需要包含新文件用 -u/--include-untracked，包含忽略文件用 -a/--all（非常谨慎）。\n2. stash 不是长期备份；重要改动还是尽快 commit 或建分支。\n3. 多次 stash 会堆叠，记得用 git stash list 查看并写清说明。',
+      tags: ['暂存', '搁置', '临时', 'stash', '保存']
     },
     {
-      cmd: 'git stash drop / clear',
-      title: '删除暂存记录',
+      cmd: 'git stash push',
+      title: '创建暂存条目（推荐写法）',
       cat: '暂存',
-      desc: '删除某条或全部 stash 记录。drop 删除指定条目，clear 清空所有暂存记录（不可恢复）。',
-      usage: 'git stash drop [stash@{n}] | git stash clear',
-      example: 'git stash drop\n# 删除最近一条 stash\n\ngit stash drop stash@{2}\n# 删除指定条目\n\ngit stash clear\n# 清空所有 stash（谨慎）',
-      tags: ['暂存', '删除', '清理', 'stash']
+      desc: '将当前改动保存为一个 stash 条目。相比裸 git stash，push 支持更明确的参数，如说明、包含未跟踪文件、指定路径等。',
+      usage: 'git stash push [-m "说明"] [-u|-a] [-- <路径...>]',
+      example: 'git stash push -m "临时保存登录页修改"\n# 带说明保存\n\ngit stash push -u -m "含未跟踪文件"\n# 同时保存未跟踪文件\n\ngit stash push -m "只暂存某文件" -- src/app.js\n# 只暂存指定路径',
+      pitfalls: '1. 不加 -u 默认不包含未跟踪新文件；不加 -a 默认不包含忽略文件。\n2. 指定路径时只会暂存对应文件改动，其他改动仍留在工作区。\n3. 建议始终加 -m 说明，避免 stash 列表难以辨认。',
+      tags: ['暂存', 'stash', 'push', '保存', '-u', 'message']
+    },
+    {
+      cmd: 'git stash list',
+      title: '查看暂存列表',
+      cat: '暂存',
+      desc: '列出当前仓库中的所有 stash 条目，包括索引、所在分支/提交基线和说明。',
+      usage: 'git stash list',
+      example: 'git stash list\n# 查看所有暂存条目\n\ngit stash list --stat\n# 查看每条暂存的文件变更统计',
+      pitfalls: '1. stash 是本地仓库状态，不会随 push 推送到远程。\n2. 列表中的 stash@{n} 编号会随 drop/pop 变化，操作前先确认目标条目。\n3. 长期积累的 stash 容易混淆，定期清理无用条目。',
+      tags: ['暂存', 'stash', 'list', '列表', '查看']
+    },
+    {
+      cmd: 'git stash show',
+      title: '查看暂存内容',
+      cat: '暂存',
+      desc: '查看某条 stash 的改动摘要或详细 diff。默认显示最近一条，也可指定 stash@{n}。',
+      usage: 'git stash show [-p] [stash@{n}]',
+      example: 'git stash show\n# 查看最近一条 stash 的改动摘要\n\ngit stash show -p stash@{0}\n# 查看指定 stash 的详细 diff\n\ngit stash show --stat stash@{1}\n# 查看指定 stash 的文件统计',
+      pitfalls: '1. 不加 -p 默认只显示摘要，不显示完整 diff。\n2. 查看包含未跟踪文件的 stash 时，显示内容可能不如普通改动直观，必要时结合 apply 到临时分支检查。\n3. 指定 stash@{n} 前先 git stash list 确认编号。',
+      tags: ['暂存', 'stash', 'show', 'diff', '查看']
+    },
+    {
+      cmd: 'git stash pop',
+      title: '恢复暂存并移除记录',
+      cat: '暂存',
+      desc: '将指定 stash 应用到当前工作区，并在应用成功后从 stash 列表中删除该条目。默认恢复最近一条。',
+      usage: 'git stash pop [stash@{n}]',
+      example: 'git stash pop\n# 恢复最近一条 stash 并移除记录\n\ngit stash pop stash@{1}\n# 恢复指定 stash 并移除记录',
+      pitfalls: '1. pop 冲突时，stash 记录可能不会自动删除；解决冲突后用 git stash list 检查，必要时手动 git stash drop。\n2. 不确定能否顺利恢复时优先用 git stash apply，确认无误后再 drop。\n3. pop 会把改动应用到当前工作区，当前分支/状态不对时可能产生冲突或混乱。',
+      tags: ['暂存', 'stash', 'pop', '恢复', '移除']
+    },
+    {
+      cmd: 'git stash apply',
+      title: '恢复暂存但保留记录',
+      cat: '暂存',
+      desc: '将指定 stash 应用到当前工作区，但保留 stash 列表中的该条目。适合想重复应用或先验证恢复结果的场景。',
+      usage: 'git stash apply [stash@{n}]',
+      example: 'git stash apply\n# 应用最近一条 stash，保留记录\n\ngit stash apply stash@{1}\n# 应用指定 stash，保留记录',
+      pitfalls: '1. apply 不会删除 stash 记录；确认不再需要后手动 git stash drop。\n2. 多次 apply 同一条 stash 可能重复引入改动或冲突，注意当前工作区状态。\n3. 冲突处理与普通合并冲突类似：解决后 git add，但不需要 commit 来完成 stash apply。',
+      tags: ['暂存', 'stash', 'apply', '恢复', '保留']
+    },
+    {
+      cmd: 'git stash drop',
+      title: '删除单条暂存记录',
+      cat: '暂存',
+      desc: '删除指定的 stash 条目。默认删除最近一条。删除后通常不可恢复。',
+      usage: 'git stash drop [stash@{n}]',
+      example: 'git stash drop\n# 删除最近一条 stash\n\ngit stash drop stash@{2}\n# 删除指定 stash 条目',
+      pitfalls: '1. drop 删除后通常不可恢复；删除前用 git stash show -p 确认内容。\n2. stash@{n} 编号会变化，连续删除时先 list 再操作。\n3. 如果只是想应用并删除，用 git stash pop；不要先 pop 再误 drop 其他条目。',
+      tags: ['暂存', 'stash', 'drop', '删除', '清理']
+    },
+    {
+      cmd: 'git stash clear',
+      title: '清空所有暂存记录',
+      cat: '暂存',
+      desc: '删除当前仓库中的所有 stash 条目。该操作不可恢复，执行前务必确认。',
+      usage: 'git stash clear',
+      example: 'git stash clear\n# 清空所有 stash（谨慎）\n\ngit stash list\n# 清空前先确认列表',
+      pitfalls: '1. clear 会删除所有 stash，通常不可恢复；执行前务必 git stash list / git stash show -p 检查。\n2. 不要把 clear 当作日常清理唯一方式；优先逐条 drop 明确目标。\n3. 误 clear 后极少数情况下可通过 fsck/悬空对象找回，但不可靠，不应作为依赖。',
+      tags: ['暂存', 'stash', 'clear', '清空', '删除', '谨慎']
+    },
+    {
+      cmd: 'git stash branch',
+      title: '基于暂存创建分支',
+      cat: '暂存',
+      desc: '以创建 stash 时的提交为基点创建并切换到新分支，然后应用该 stash；成功后通常会删除该 stash 条目。',
+      usage: 'git stash branch <新分支名> [stash@{n}]',
+      example: 'git stash branch fix-bug stash@{0}\n# 基于 stash@{0} 创建分支并应用暂存\n\ngit stash branch feature/temp\n# 基于最近一条 stash 创建分支',
+      pitfalls: '1. 适合 stash 应用冲突较多或想隔离恢复现场的场景。\n2. 成功应用后 stash 条目通常会被删除；如需保留请先确认行为或改用 apply。\n3. 新分支基点是 stash 创建时的提交，不一定是当前 HEAD。',
+      tags: ['暂存', 'stash', 'branch', '分支', '恢复']
     },
     {
       cmd: 'git tag',
-      title: '管理标签',
+      title: '列出标签',
       cat: '标签',
-      desc: '为特定提交打标签，常用于标记发布版本。分轻量标签和附注标签，附注标签可包含说明、作者和日期。',
-      usage: 'git tag [选项] [标签名] [提交]',
-      example: 'git tag\n# 列出所有标签\n\ngit tag v1.0.0\n# 在当前提交创建轻量标签\n\ngit tag -a v1.0.0 -m "发布 1.0.0"\n# 创建附注标签\n\ngit tag -d v1.0.0\n# 删除本地标签\n\ngit push origin v1.0.0\n# 推送单个标签到远程\n\ngit push origin --tags\n# 推送所有标签\n\ngit push origin --delete v1.0.0\n# 删除远程标签',
-      tags: ['标签', '版本', '发布', 'release', 'tag', 'annotate']
+      desc: '列出本地仓库中的标签。常用于查看发布版本标记。',
+      usage: 'git tag [-l "模式"] [--sort=-v:refname]',
+      example: 'git tag\n# 列出所有标签\n\ngit tag -l "v1.*"\n# 按模式过滤标签\n\ngit tag --sort=-v:refname\n# 按版本号倒序查看（较新版本在前）',
+      pitfalls: '1. git tag 默认列出本地标签；远程标签用 git ls-remote --tags origin 或 git fetch --tags 后查看。\n2. 标签名排序默认是字典序，版本号排序建议用 --sort=-v:refname。',
+      tags: ['标签', '版本', '列表', 'tag', 'list']
+    },
+    {
+      cmd: 'git tag <tagname>',
+      title: '创建轻量标签',
+      cat: '标签',
+      desc: '在当前提交（或指定提交）创建轻量标签。轻量标签只是一个名称指针，不包含额外说明信息。',
+      usage: 'git tag <标签名> [提交]',
+      example: 'git tag v1.0.0\n# 在当前提交创建轻量标签\n\ngit tag v1.0.0 abc1234\n# 在指定提交创建轻量标签',
+      pitfalls: '1. 轻量标签没有说明、打标签者和日期；正式发布建议用附注标签 git tag -a。\n2. 标签名已存在时会失败；需要移动标签应谨慎处理（通常不建议改已发布标签）。\n3. 创建本地标签后不会自动推送到远程，需要 git push origin <tag>。',
+      tags: ['标签', '轻量标签', '版本', 'tag']
+    },
+    {
+      cmd: 'git tag -a',
+      title: '创建附注标签',
+      cat: '标签',
+      desc: '创建附注标签（annotated tag），可包含说明、打标签者、日期。适合正式发布版本。',
+      usage: 'git tag -a <标签名> -m "说明" [提交]',
+      example: 'git tag -a v1.0.0 -m "发布 1.0.0"\n# 在当前提交创建附注标签\n\ngit tag -a v1.0.0 -m "发布 1.0.0" abc1234\n# 在指定提交创建附注标签',
+      pitfalls: '1. 不带 -m 时会打开编辑器要求输入说明。\n2. 附注标签是推荐的发布标签形式，包含元数据，便于追溯。\n3. 已推送的发布标签不要随意改动或删除，否则会影响他人和 CI/CD。',
+      tags: ['标签', '附注标签', '版本', '发布', 'tag', 'annotate']
+    },
+    {
+      cmd: 'git tag -d',
+      title: '删除本地标签',
+      cat: '标签',
+      desc: '删除本地仓库中的指定标签。不会影响远程标签。',
+      usage: 'git tag -d <标签名>',
+      example: 'git tag -d v1.0.0\n# 删除本地标签',
+      pitfalls: '1. 只删除本地标签；远程标签需用 git push origin --delete <tag>。\n2. 删除已发布标签前确认是否有 CI/CD、包管理器或团队依赖该标签。\n3. 误删本地标签如果远程还有，可 git fetch --tags 重新获取（取决于远程状态）。',
+      tags: ['标签', '删除', '本地', 'tag', '-d']
+    },
+    {
+      cmd: 'git push origin <tag>',
+      title: '推送单个标签到远程',
+      cat: '标签',
+      desc: '将指定本地标签推送到远程仓库。',
+      usage: 'git push <远程名> <标签名>',
+      example: 'git push origin v1.0.0\n# 推送单个标签到 origin',
+      pitfalls: '1. git push 默认不会推送标签；标签需要显式推送。\n2. 推送前确认标签指向的提交正确，特别是发布标签。\n3. 如果远程已存在同名标签，可能被拒绝；不要轻易强推标签。',
+      tags: ['标签', '推送', '远程', 'tag', 'push']
+    },
+    {
+      cmd: 'git push origin --tags',
+      title: '推送所有本地标签到远程',
+      cat: '标签',
+      desc: '将本地所有标签推送到远程仓库。适合批量发布标签，但要注意不要误推本地临时标签。',
+      usage: 'git push <远程名> --tags',
+      example: 'git push origin --tags\n# 推送所有本地标签到 origin',
+      pitfalls: '1. 会推送所有本地标签，包括你可能不想发布的临时/测试标签；推送前用 git tag 检查。\n2. 正式发布通常更推荐显式推送单个标签 git push origin v1.0.0。\n3. 远程已有同名标签时行为可能受冲突影响；避免覆盖已发布标签。',
+      tags: ['标签', '推送', '全部', 'tags', 'remote']
+    },
+    {
+      cmd: 'git push origin --delete <tag>',
+      title: '删除远程标签',
+      cat: '标签',
+      desc: '删除远程仓库中的指定标签。本地标签需另外用 git tag -d 删除。',
+      usage: 'git push <远程名> --delete <标签名>',
+      example: 'git push origin --delete v1.0.0\n# 删除远程标签\n\ngit tag -d v1.0.0\n# 如需同时删除本地标签',
+      pitfalls: '1. 删除已发布的远程标签会影响依赖该标签的用户/CI/构建；谨慎操作。\n2. 该命令只删远程标签，本地标签仍需 git tag -d 删除。\n3. 团队协作中删除发布标签前务必通知相关人员。',
+      tags: ['标签', '删除', '远程', 'tag', 'push', 'delete']
     },
     {
       cmd: 'git describe',
@@ -549,13 +1051,54 @@
       tags: ['恢复', '找回', '历史', 'reset', 'HEAD', 'reflog']
     },
     {
-      cmd: 'git bisect',
-      title: '二分定位问题提交',
+      cmd: 'git bisect start',
+      title: '开始二分定位',
       cat: '排查',
-      desc: '通过二分查找在“好”与“坏”提交之间定位首次引入问题的提交。每一步测试后标记 good/bad，Git 自动切到中间提交。',
-      usage: 'git bisect start|good|bad|reset|run',
-      example: 'git bisect start\ngit bisect bad\n# 标记当前为有问题\ngit bisect good v1.0.0\n# 标记已知正常的版本\n# ... 测试后执行 git bisect good 或 git bisect bad ...\ngit bisect reset\n# 结束定位并回到原分支\n\ngit bisect run ./test.sh\n# 用脚本自动二分（返回 0 为好，非 0 为坏）',
-      tags: ['二分', '定位', 'bug', '排查', '回归']
+      desc: '启动 bisect 会话，准备通过二分查找定位引入问题的提交。',
+      usage: 'git bisect start [坏提交] [好提交]',
+      example: 'git bisect start\n# 开始二分会话\n\ngit bisect start HEAD v1.0.0\n# 开始并同时指定坏/好提交',
+      pitfalls: '1. 开始后 Git 会切换到中间提交（分离 HEAD 状态）；结束后用 git bisect reset 恢复。\n2. 二分前确保工作区干净，避免切换提交时冲突。\n3. 好/坏提交范围要尽量准确，能减少二分步数。',
+      tags: ['bisect', 'start', '二分', '排查']
+    },
+    {
+      cmd: 'git bisect bad',
+      title: '标记问题提交',
+      cat: '排查',
+      desc: '在 bisect 会话中标记当前或指定提交为“有问题”。',
+      usage: 'git bisect bad [提交]',
+      example: 'git bisect bad\n# 标记当前提交有问题\n\ngit bisect bad HEAD\n# 显式标记 HEAD 有问题',
+      pitfalls: '1. 至少要标记一个 bad 和一个 good，Git 才能开始二分。\n2. 标记错误会导致定位结果不可信；不确定时重新开始 bisect。\n3. 测试标准应一致，否则好坏判断会混乱。',
+      tags: ['bisect', 'bad', '二分', '问题提交']
+    },
+    {
+      cmd: 'git bisect good',
+      title: '标记正常提交',
+      cat: '排查',
+      desc: '在 bisect 会话中标记当前或指定提交为“正常”。',
+      usage: 'git bisect good [提交...]',
+      example: 'git bisect good v1.0.0\n# 标记已知正常版本\n\ngit bisect good\n# 测试当前提交后标记为正常',
+      pitfalls: '1. 可以一次标记多个已知正常提交。\n2. “正常”标准要与 bad 标准一致。\n3. 如果 good/bad 标记反了，结果会指向错误提交，需 reset 后重来。',
+      tags: ['bisect', 'good', '二分', '正常提交']
+    },
+    {
+      cmd: 'git bisect reset',
+      title: '结束二分并恢复',
+      cat: '排查',
+      desc: '结束 bisect 会话并恢复到开始 bisect 前的分支/状态。',
+      usage: 'git bisect reset [提交]',
+      example: 'git bisect reset\n# 结束二分，恢复原分支\n\ngit bisect reset main\n# 结束二分并切换到指定提交/分支',
+      pitfalls: '1. bisect 结束后一定要 reset，否则可能停留在分离 HEAD 状态。\n2. reset 前记录定位到的问题提交哈希，方便后续修复。\n3. 如果工作区有临时测试改动，reset 前先清理。',
+      tags: ['bisect', 'reset', '结束二分', '恢复']
+    },
+    {
+      cmd: 'git bisect run',
+      title: '自动运行二分测试',
+      cat: '排查',
+      desc: '自动对每个二分点运行脚本/命令，根据退出码判断 good/bad，加速定位。',
+      usage: 'git bisect run <命令>',
+      example: 'git bisect run npm test\n# 自动运行测试判定好坏\n\ngit bisect run ./test.sh\n# 用脚本自动二分（退出码 0=good，1-124/126/127=bad，125=skip）',
+      pitfalls: '1. 脚本退出码约定：0 表示 good，1-124/126/127 通常表示 bad，125 表示跳过当前提交（不可测试）。\n2. 测试脚本必须可靠且可重复，否则 bisect 结果不可信。\n3. 自动运行前先手动验证几个点，确认测试标准正确。',
+      tags: ['bisect', 'run', '自动化', '测试', '排查']
     },
     {
       cmd: 'git grep',
@@ -567,13 +1110,24 @@
       tags: ['搜索', '查找', '文本', 'grep']
     },
     {
-      cmd: 'git show-ref / git rev-parse',
-      title: '查看引用与解析提交',
+      cmd: 'git show-ref',
+      title: '查看本地引用',
       cat: '排查',
-      desc: 'show-ref 列出本地引用；rev-parse 用于解析修订版本参数、获取提交哈希或仓库路径等信息，常用于脚本。',
-      usage: 'git show-ref | git rev-parse <参数>',
-      example: 'git show-ref\n# 列出所有引用及其哈希\n\ngit rev-parse HEAD\n# 输出当前提交的完整哈希\n\ngit rev-parse --abbrev-ref HEAD\n# 输出当前分支名\n\ngit rev-parse --show-toplevel\n# 输出仓库根目录路径',
-      tags: ['引用', '哈希', '分支名', '脚本', '解析']
+      desc: '列出本地仓库中的引用（分支、标签等）及其对应的提交哈希，常用于脚本或排查引用状态。',
+      usage: 'git show-ref [--heads|--tags] [模式]',
+      example: 'git show-ref\n# 列出所有本地引用及哈希\n\ngit show-ref --heads\n# 只查看本地分支引用\n\ngit show-ref --tags\n# 只查看标签引用',
+      pitfalls: '1. show-ref 默认显示本地引用；查看远程引用用 git ls-remote。\n2. 引用异常（如分支丢失、tag 指向不对）时可结合 git reflog / git fsck 排查。\n3. 输出适合脚本处理，但日常查看分支更常用 git branch -vv。',
+      tags: ['引用', 'ref', '哈希', '分支', '标签', '排查']
+    },
+    {
+      cmd: 'git rev-parse',
+      title: '解析修订参数与仓库信息',
+      cat: '排查',
+      desc: '解析 Git 修订参数（如 HEAD、分支名、相对引用）并输出对应哈希或仓库路径信息，常用于脚本和自动化。',
+      usage: 'git rev-parse <参数>',
+      example: 'git rev-parse HEAD\n# 输出当前提交完整哈希\n\ngit rev-parse --short HEAD\n# 输出短哈希\n\ngit rev-parse --abbrev-ref HEAD\n# 输出当前分支名（分离 HEAD 时输出 HEAD）\n\ngit rev-parse --show-toplevel\n# 输出仓库根目录路径\n\ngit rev-parse --git-dir\n# 输出 .git 目录路径',
+      pitfalls: '1. 在分离 HEAD 状态下，--abbrev-ref HEAD 返回 HEAD，不是分支名。\n2. rev-parse 失败通常说明不在 Git 仓库内或引用不存在；脚本中应检查退出码。\n3. 用于脚本时注意跨平台路径输出格式和引号处理。',
+      tags: ['引用', '哈希', '分支名', '脚本', '解析', 'rev-parse']
     },
     {
       cmd: 'git ls-files',
@@ -586,22 +1140,123 @@
     },
     {
       cmd: 'git submodule',
-      title: '管理子模块',
+      title: '查看子模块状态（概览）',
       cat: '子模块',
-      desc: '在一个仓库中嵌入并跟踪另一个仓库的特定提交。适合依赖独立维护的外部项目。',
-      usage: 'git submodule <add|init|update|status|sync|deinit>',
-      example: 'git submodule add <url> path/to/submodule\n# 添加子模块\n\ngit submodule update --init --recursive\n# 初始化并更新子模块（克隆后常用）\n\ngit submodule status\n# 查看子模块状态\n\ngit submodule sync --recursive\n# 同步子模块远程地址配置\n\ngit clone --recurse-submodules <url>\n# 克隆仓库时一并拉取子模块',
-      pitfalls: '1. 普通 git clone 不会自动拉取子模块内容；克隆后需要 git submodule update --init --recursive。\n2. 子模块固定在特定提交，不会自动跟随上游最新提交；需要更新时进入子模块或使用子模块更新命令并提交父仓库引用。\n3. 修改子模块后要在父仓库提交子模块指针变化，否则其他人拉取不到你的子模块版本。\n4. 删除子模块不只是 rm 目录；建议按 deinit + git rm + 清理 .git/modules 的流程操作。',
-      tags: ['子模块', '依赖', '嵌套仓库', 'submodule', 'recurse-submodules']
+      desc: '列出当前仓库配置的子模块及其提交状态。子模块让一个仓库以固定提交引用另一个仓库。',
+      usage: 'git submodule [status]',
+      example: 'git submodule\n# 等价于 git submodule status\n\ngit submodule status\n# 查看子模块状态',
+      pitfalls: '1. 子模块是“固定提交引用”，不会自动跟随上游最新提交。\n2. clone 后子模块目录可能为空，需要 init/update。\n3. 子模块状态异常时，结合 git submodule status 和子模块目录内 git status 排查。',
+      tags: ['子模块', 'submodule', '状态', '概览']
     },
     {
-      cmd: 'git worktree',
-      title: '管理多个工作树',
+      cmd: 'git submodule add',
+      title: '添加子模块',
+      cat: '子模块',
+      desc: '将外部仓库作为子模块添加到当前仓库指定路径，并记录子模块配置。',
+      usage: 'git submodule add <仓库URL> [路径]',
+      example: 'git submodule add https://github.com/example/lib.git libs/lib\n# 添加子模块到 libs/lib\n\ngit status\n# 会看到 .gitmodules 和子模块路径变更',
+      pitfalls: '1. 添加子模块会修改 .gitmodules 和索引，需要提交这些变更。\n2. 子模块路径应避免与现有目录冲突。\n3. 私有子模块仓库需要配置访问权限，否则协作者无法初始化。',
+      tags: ['子模块', 'add', '添加', 'submodule']
+    },
+    {
+      cmd: 'git submodule init',
+      title: '初始化子模块配置',
+      cat: '子模块',
+      desc: '根据 .gitmodules 初始化本地子模块配置。通常与 git submodule update 配合使用。',
+      usage: 'git submodule init [-- <路径...>]',
+      example: 'git submodule init\n# 初始化所有子模块配置\n\ngit submodule init -- libs/lib\n# 只初始化指定子模块',
+      pitfalls: '1. init 只初始化配置，不会拉取子模块内容；需要 git submodule update。\n2. clone 后常用组合是 git submodule update --init --recursive。\n3. .gitmodules 变更后可能需要 git submodule sync。',
+      tags: ['子模块', 'init', '初始化', 'submodule']
+    },
+    {
+      cmd: 'git submodule update',
+      title: '更新子模块内容',
+      cat: '子模块',
+      desc: '根据父仓库记录的子模块提交，更新子模块工作目录内容。clone 后或切换分支后常用。',
+      usage: 'git submodule update [--init] [--recursive]',
+      example: 'git submodule update --init --recursive\n# 初始化并更新所有子模块（含嵌套）\n\ngit submodule update --remote\n# 按子模块跟踪分支更新到远程最新（谨慎，会改指针）',
+      pitfalls: '1. 默认更新到父仓库记录的提交，不是子模块远程最新提交。\n2. --remote 会把子模块更新到远程跟踪分支最新提交，父仓库会出现子模块指针变更，需要提交。\n3. 切换父仓库分支后如果子模块指针变化，记得执行 submodule update。',
+      tags: ['子模块', 'update', '更新', 'recursive', 'submodule']
+    },
+    {
+      cmd: 'git submodule sync',
+      title: '同步子模块远程配置',
+      cat: '子模块',
+      desc: '将 .gitmodules 中的子模块 URL 同步到本地 git 配置。子模块远程地址变更后常用。',
+      usage: 'git submodule sync [--recursive]',
+      example: 'git submodule sync --recursive\n# 同步所有子模块远程地址配置\n\ngit submodule update --init --recursive\n# 同步后通常再更新',
+      pitfalls: '1. 只同步配置，不会拉取代码。\n2. 子模块 URL 变更后，协作者需要 sync + update。\n3. 不要手工随意改 .git/config 中的子模块 URL 而不同步 .gitmodules。',
+      tags: ['子模块', 'sync', '同步', 'URL', 'submodule']
+    },
+    {
+      cmd: 'git submodule deinit',
+      title: '取消子模块初始化',
+      cat: '子模块',
+      desc: '取消子模块的本地初始化状态，清理工作目录中的子模块内容（按 Git 版本行为）。用于移除子模块前的步骤之一。',
+      usage: 'git submodule deinit [-f] [-- <路径>]',
+      example: 'git submodule deinit -f libs/lib\n# 取消指定子模块初始化\n\ngit rm -f libs/lib\n# 从索引和工作区移除子模块记录',
+      pitfalls: '1. deinit 不会自动删除 .gitmodules 记录或 .git/modules 目录残留；完整移除需要额外步骤。\n2. 有本地修改时可能需要 -f，注意会丢弃子模块本地改动。\n3. 删除子模块流程建议：deinit -> git rm -> 清理 .git/modules/<path> -> 提交。',
+      tags: ['子模块', 'deinit', '移除', 'submodule']
+    },
+    {
+      cmd: 'git worktree list',
+      title: '查看工作树列表',
       cat: '分支',
-      desc: '为同一个仓库创建多个工作目录，可同时检出不同分支并行工作，无需反复切换或多次克隆。',
-      usage: 'git worktree <add|list|remove|prune>',
-      example: 'git worktree list\n# 列出所有工作树\n\ngit worktree add ../hotfix hotfix-branch\n# 在新目录检出指定分支\n\ngit worktree add -b feature/x ../feature-x main\n# 创建新分支并在新目录检出\n\ngit worktree remove ../hotfix\n# 移除工作树\n\ngit worktree prune\n# 清理失效的工作树记录',
-      tags: ['工作树', '多目录', '并行', '分支']
+      desc: '列出当前仓库关联的所有工作树，包括主工作树和附加工作树的路径、HEAD 提交和分支。',
+      usage: 'git worktree list [--porcelain]',
+      example: 'git worktree list\n# 查看所有工作树\n\ngit worktree list --porcelain\n# 机器可读格式输出（脚本用）',
+      pitfalls: '1. 主工作树和附加工作树共享同一个 .git 仓库对象库，但各自有独立工作区和索引。\n2. 看到 locked/prunable 状态可帮助排查无法移除或清理的问题。',
+      tags: ['worktree', 'list', '工作树', '查看', '分支']
+    },
+    {
+      cmd: 'git worktree add',
+      title: '添加工作树',
+      cat: '分支',
+      desc: '为指定分支或新分支创建一个新的工作树目录，实现同一仓库多分支并行开发。',
+      usage: 'git worktree add <路径> [<分支>] | git worktree add -b <新分支> <路径> [<起点>]',
+      example: 'git worktree add ../hotfix hotfix-branch\n# 为已有分支创建工作树\n\ngit worktree add -b feature/x ../feature-x main\n# 基于 main 创建新分支并添加工作树\n\ngit worktree add ../tmp-detach --detach HEAD\n# 创建分离 HEAD 工作树（谨慎）',
+      pitfalls: '1. 同一个分支不能同时被两个工作树检出。\n2. 新工作树目录路径通常放同级目录，避免放进当前仓库内部造成混乱。\n3. 每个工作树有独立暂存区和未提交改动，互不影响。',
+      tags: ['worktree', 'add', '添加', '并行开发', '分支']
+    },
+    {
+      cmd: 'git worktree remove',
+      title: '移除工作树',
+      cat: '分支',
+      desc: '移除一个附加工作树。工作树中有未提交改动时默认会拒绝移除。',
+      usage: 'git worktree remove <工作树路径>',
+      example: 'git worktree remove ../hotfix\n# 移除工作树\n\ngit worktree remove --force ../hotfix\n# 强制移除（谨慎）',
+      pitfalls: '1. 有未提交改动或锁定时可能无法移除；先确认改动已提交/stash。\n2. --force 会强制移除，可能丢失该工作树未提交改动。\n3. remove 只移除工作树，不删除分支本身。',
+      tags: ['worktree', 'remove', '移除', '清理', '分支']
+    },
+    {
+      cmd: 'git worktree prune',
+      title: '清理失效工作树记录',
+      cat: '分支',
+      desc: '清理已手动删除目录但仍残留在 Git 元数据中的工作树记录。',
+      usage: 'git worktree prune [-n] [-v]',
+      example: 'git worktree prune -n\n# 预览将清理的失效工作树记录\n\ngit worktree prune\n# 清理失效工作树记录',
+      pitfalls: '1. 先用 -n/--dry-run 预览，避免误清理。\n2. 如果工作树目录被手工删除，Git 仍可能保留管理记录，需要 prune。\n3. locked 的工作树不会被 prune，除非先 unlock（谨慎）。',
+      tags: ['worktree', 'prune', '清理', '失效', '分支']
+    },
+    {
+      cmd: 'git worktree lock',
+      title: '锁定工作树',
+      cat: '分支',
+      desc: '锁定工作树，防止被 prune 清理。适合工作树位于移动存储或临时不可访问路径的场景。',
+      usage: 'git worktree lock [--reason <原因>] <工作树路径>',
+      example: 'git worktree lock --reason "移动硬盘未挂载" ../hotfix\n# 锁定工作树并记录原因',
+      pitfalls: '1. 锁定后 prune 不会清理它；不再需要时记得 unlock。\n2. lock 不会保护未提交改动不被删除，只是保护 worktree 元数据记录。',
+      tags: ['worktree', 'lock', '锁定', '分支']
+    },
+    {
+      cmd: 'git worktree unlock',
+      title: '解锁工作树',
+      cat: '分支',
+      desc: '解除工作树锁定，使其可被 prune 清理（如果已失效）。',
+      usage: 'git worktree unlock <工作树路径>',
+      example: 'git worktree unlock ../hotfix\n# 解锁工作树',
+      pitfalls: '1. 解锁前确认该工作树目录确实可用或确实要允许 prune。\n2. unlock 不会删除工作树，只是取消锁定状态。',
+      tags: ['worktree', 'unlock', '解锁', '分支']
     },
     {
       cmd: 'git archive',
@@ -613,13 +1268,24 @@
       tags: ['导出', '打包', '归档', '发布', 'zip', 'tar']
     },
     {
-      cmd: 'git format-patch / git am',
-      title: '生成与应用补丁邮件',
+      cmd: 'git format-patch',
+      title: '将提交导出为补丁文件',
       cat: '合并',
-      desc: 'format-patch 将提交导出为补丁文件；am 将补丁邮件应用为提交。常用于邮件工作流或跨仓库传递变更。',
-      usage: 'git format-patch <范围> | git am <补丁文件>',
-      example: 'git format-patch -1 HEAD\n# 将最近一次提交导出为补丁\n\ngit format-patch origin/main..HEAD\n# 导出本地未推送提交为补丁\n\ngit am 0001-fix.patch\n# 应用补丁文件\n\ngit am --abort\n# 应用冲突时放弃',
-      tags: ['补丁', 'patch', '邮件', '导出', '应用']
+      desc: '将提交导出为补丁文件（邮件格式），可用于邮件工作流、代码审阅或跨仓库传递提交。',
+      usage: 'git format-patch [选项] <范围/提交>',
+      example: 'git format-patch -1 HEAD\n# 将最近一次提交导出为补丁\n\ngit format-patch origin/main..HEAD\n# 导出本地未推送提交为补丁\n\ngit format-patch -o patches HEAD~3..HEAD\n# 导出最近 3 个提交到 patches 目录',
+      pitfalls: '1. format-patch 导出的是提交（含作者、时间、说明），与 git diff 生成的纯 diff 不同。\n2. 范围写错会导出过多或过少提交；导出前用 git log --oneline <范围> 确认。\n3. 补丁应用到不同基线时可能冲突，需要用 git am 或 git apply 处理。',
+      tags: ['补丁', 'patch', '邮件', '导出', 'format-patch']
+    },
+    {
+      cmd: 'git am',
+      title: '应用补丁邮件为提交',
+      cat: '合并',
+      desc: '将 format-patch 生成的补丁邮件应用到当前分支，并创建对应提交。常用于邮件工作流。',
+      usage: 'git am [选项] <补丁文件...>',
+      example: 'git am 0001-fix.patch\n# 应用补丁文件\n\ngit am patches/*.patch\n# 按顺序应用多个补丁\n\ngit am --3way 0001-fix.patch\n# 冲突时尝试三方合并\n\ngit am --abort\n# 应用冲突时放弃',
+      pitfalls: '1. am 应用的是邮件格式补丁；普通 diff 文件通常用 git apply。\n2. 冲突时解决后 git add，再 git am --continue；放弃用 --abort。\n3. 应用前确认当前分支和基线正确，避免把补丁应用到错误分支。',
+      tags: ['补丁', 'patch', '邮件', '应用', 'am']
     },
     {
       cmd: 'git apply',
@@ -631,22 +1297,44 @@
       tags: ['补丁', 'diff', '应用', '检查']
     },
     {
-      cmd: 'git help / git version',
-      title: '帮助与版本信息',
+      cmd: 'git help',
+      title: '查看命令帮助文档',
       cat: '配置',
-      desc: 'git help 查看命令帮助文档；git version 显示当前 Git 版本。遇到参数不确定时优先查帮助。',
-      usage: 'git help <命令> | git <命令> -h | git version',
-      example: 'git help commit\n# 打开 commit 的详细帮助\n\ngit commit -h\n# 查看 commit 的简要参数\n\ngit --version\n# 查看 Git 版本',
-      tags: ['帮助', '文档', '版本', 'help', 'version']
+      desc: '查看 Git 命令的帮助文档。遇到参数不确定、行为差异或平台差异时，优先查官方帮助。',
+      usage: 'git help <命令> | git <命令> -h',
+      example: 'git help commit\n# 打开 commit 的详细帮助（通常是 man page/浏览器）\n\ngit commit -h\n# 查看 commit 的简要参数\n\ngit help -a\n# 列出所有可用命令（较长）',
+      pitfalls: '1. git help <cmd> 通常显示完整文档；git <cmd> -h 显示简要用法，更快。\n2. 不同 Git 版本参数和行为可能不同；遇到奇怪行为先确认 git --version。\n3. Windows 下 help 的打开方式可能与 Linux/macOS 不同，取决于安装配置。',
+      tags: ['帮助', '文档', 'help', '用法']
     },
     {
-      cmd: 'git gc / git fsck',
-      title: '仓库维护与检查',
+      cmd: 'git version',
+      title: '查看 Git 版本',
+      cat: '配置',
+      desc: '显示当前安装的 Git 版本。排查命令兼容性、行为差异或新特性支持时很有用。',
+      usage: 'git --version | git version',
+      example: 'git --version\n# 查看 Git 版本\n\ngit version\n# 等价写法',
+      pitfalls: '1. 不同版本对 switch/restore、默认分支、部分参数行为可能有差异。\n2. CI/服务器/本地 Git 版本不一致时，可能出现同命令表现不同的问题。\n3. 需要升级时按操作系统官方方式安装，避免多版本冲突。',
+      tags: ['版本', 'version', '兼容性', '配置']
+    },
+    {
+      cmd: 'git gc',
+      title: '仓库垃圾回收与优化',
       cat: '排查',
-      desc: 'gc 执行垃圾回收和仓库优化（压缩对象等）；fsck 检查对象数据库的完整性和一致性，排查仓库损坏问题。',
-      usage: 'git gc [--prune] | git fsck [--full]',
-      example: 'git gc\n# 执行常规垃圾回收与优化\n\ngit gc --prune=now\n# 立即清理不可达对象（谨慎）\n\ngit fsck\n# 检查仓库完整性\n\ngit count-objects -vH\n# 查看仓库对象统计',
-      tags: ['维护', '优化', '检查', '完整性', '垃圾回收']
+      desc: '执行垃圾回收和仓库优化，包括压缩对象、清理不可达对象等。一般 Git 会自动运行，手动用于维护或排查。',
+      usage: 'git gc [--prune=<日期>|--aggressive]',
+      example: 'git gc\n# 执行常规垃圾回收与优化\n\ngit gc --prune=now\n# 立即清理不可达对象（谨慎）\n\ngit count-objects -vH\n# 查看仓库对象统计',
+      pitfalls: '1. --prune=now 会立即清理不可达对象，可能导致误删后难以通过 reflog/悬空对象找回；谨慎使用。\n2. gc 会改变仓库内部存储形式，但不应改变提交历史语义。\n3. 大仓库执行 gc 可能较慢；在 CI 或磁盘紧张时评估影响。',
+      tags: ['维护', '优化', '垃圾回收', 'gc', 'prune']
+    },
+    {
+      cmd: 'git fsck',
+      title: '检查仓库完整性',
+      cat: '排查',
+      desc: '检查 Git 对象数据库的完整性和一致性，用于排查仓库损坏、悬空对象或引用问题。',
+      usage: 'git fsck [--full] [--no-reflogs]',
+      example: 'git fsck\n# 检查仓库完整性\n\ngit fsck --full\n# 更彻底检查\n\ngit fsck --no-reflogs\n# 不把 reflog 引用视为可达（排查悬空对象）',
+      pitfalls: '1. 悬空对象（dangling）不一定是错误；可能是正常垃圾回收前的残留。\n2. 发现 missing/corrupt 对象时先备份仓库，再评估恢复方案。\n3. fsck 主要用于诊断，不会自动修复损坏对象。',
+      tags: ['检查', '完整性', 'fsck', '悬空对象', '排查']
     }
   ];
 
