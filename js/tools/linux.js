@@ -113,6 +113,15 @@
       tags: ['分页', '查看', '逐屏', 'more']
     },
     {
+      cmd: 'vi / vim',
+      title: '终端文本编辑器（vi/vim）',
+      cat: '查看',
+      desc: 'vi 是经典终端编辑器，vim 为其增强版（多数系统上 vi 可能是 vim 的别名）。核心是多模式：正常模式（默认，移动/删除/命令）、插入模式（输入文本）、可视模式（选择文本）、命令行模式（: 开头执行命令）。首次使用建议先记“如何进入插入、如何保存退出、如何不保存退出”，避免卡住。',
+      usage: 'vi [文件] | vim [文件]',
+      example: '# 启动\nvim file.txt\n\n# 进入后常用（正常模式下按键；: 开头为命令行模式回车执行）\n# i        在光标前进入插入模式\n# a        在光标后进入插入模式\n# o        在下方新建一行并进入插入模式\n# Esc      从插入/可视等模式回到正常模式\n# :w       保存\n# :q       退出（未改动）\n# :wq 或 :x  保存并退出\n# ZZ       正常模式下保存并退出（快捷）\n# :q!      强制退出不保存\n# :set nu  显示行号（临时）\n# /pattern 搜索，n/N 下/上一个匹配\n# dd       删除当前行（正常模式）\n# yy       复制当前行，p 粘贴\n# u        撤销，Ctrl+r 重做（vim 常用）',
+      tags: ['编辑器', 'vim', 'vi', '文本编辑', '终端']
+    },
+    {
       cmd: 'less',
       title: '分页查看文件',
       cat: '查看',
@@ -413,10 +422,28 @@
       cmd: 'dig',
       title: 'DNS 查询工具',
       cat: '网络',
-      desc: '向 DNS 服务器查询记录（A/AAAA/MX/TXT 等），输出比 nslookup 更详细且适合脚本解析。常用于排查域名解析问题。',
+      desc: '向 DNS 服务器查询记录（A/AAAA/MX/TXT 等），输出详细，适合脚本与排障。nslookup 也常见但交互/输出风格不同；在很多发行版中 dig 属于 bind-utils/dnsutils 包。',
       usage: 'dig [@服务器] 域名 [类型] [选项]',
       example: 'dig example.com\n# 查询 A 记录（默认）\n\ndig example.com AAAA\n# 查询 IPv6 记录\n\ndig @8.8.8.8 example.com MX\n# 指定 DNS 服务器查询 MX 记录\n\ndig +short example.com\n# 只输出精简结果',
       tags: ['DNS', '解析', '查询', 'dig', '网络排障']
+    },
+    {
+      cmd: 'nslookup',
+      title: '交互式/简单 DNS 查询',
+      cat: '网络',
+      desc: '查询 DNS 记录的常用工具，常见于多系统。可直接查域名或进入交互模式；输出与 dig 不同，排障时两者可互补。部分最小系统可能未预装。',
+      usage: 'nslookup [域名] [DNS服务器]',
+      example: 'nslookup example.com\n# 使用系统配置的 DNS 查询\n\nnslookup example.com 8.8.8.8\n# 指定 DNS 服务器\n\nnslookup -type=mx example.com\n# 查询 MX 记录（语法因实现略有差异）',
+      tags: ['DNS', '解析', '查询', 'nslookup']
+    },
+    {
+      cmd: 'mtr',
+      title: '结合 ping 与 traceroute 的网络诊断',
+      cat: '网络',
+      desc: 'mtr 实时统计到目标路径上各跳的丢包率与延迟，比单次 traceroute 更适合观察间歇性问题。可能需要安装（如 mtr 或 mtr-tiny），部分功能需要 root。',
+      usage: 'mtr [选项] 主机',
+      example: 'mtr example.com\n# 交互式动态显示（按 q 退出）\n\nmtr -rw example.com\n# 报告模式，输出后结束（适合粘贴到工单）\n\nmtr -n example.com\n# 不解析主机名',
+      tags: ['路由', '丢包', '延迟', '网络诊断', 'mtr']
     },
     {
       cmd: 'ping',
@@ -518,12 +545,21 @@
       tags: ['压缩', '解压', 'xz']
     },
     {
+      cmd: 'clear',
+      title: '清屏',
+      cat: '查看',
+      desc: '清除当前终端屏幕显示（依赖终端/termcap）。不会清除终端滚动缓冲区的历史内容取决于终端实现；在某些环境下可用 reset 恢复终端状态。',
+      usage: 'clear',
+      example: 'clear\n# 清空当前终端可见区域',
+      tags: ['清屏', '终端']
+    },
+    {
       cmd: 'echo',
       title: '输出文本或变量',
       cat: '查看',
-      desc: '将字符串或变量值输出到标准输出，常用于脚本提示、写入文件和查看环境变量。',
+      desc: '将字符串或变量值输出到标准输出，常用于脚本提示、写入文件和查看环境变量。注意：不同 shell 对反斜杠转义处理不同（bash 中 echo -e 可解释转义，部分实现默认不解释）；在脚本中需要可移植时常用 printf。',
       usage: 'echo [选项] [字符串...]',
-      example: 'echo "Hello"\n# 输出文本\n\necho $HOME\n# 输出环境变量\n\necho -e "a\\nb"\n# 解释转义字符（如换行）',
+      example: 'echo "Hello"\n# 输出文本\n\necho $HOME\n# 输出环境变量\n\necho -e "a\\nb"\n# 解释转义（bash 等，视实现）\n\necho -n "no newline"\n# 不自动换行（常见选项）',
       tags: ['输出', '打印', '变量', '文本']
     },
     {
@@ -755,10 +791,82 @@
       cmd: 'history',
       title: '查看命令历史',
       cat: '系统',
-      desc: '显示当前 shell 记录的历史命令。可配合 ! 编号或 Ctrl+R 快速复用历史命令（具体行为依赖 shell）。',
+      desc: '显示当前 shell 记录的历史命令（bash 常用）。可用 history n 查看最近 n 条；!n 执行第 n 条（谨慎），!! 执行上一条，!string 执行最近以 string 开头的命令。Ctrl+R 反向搜索历史（交互）。历史写入文件（如 ~/.bash_history）时机依赖 shell 设置（HISTFILE、HISTSIZE 等）。',
       usage: 'history [n]',
-      example: 'history\n# 显示命令历史\n\nhistory 20\n# 显示最近 20 条\n\n!42\n# 执行历史中第 42 条命令（bash 等支持）',
+      example: 'history\n# 列出历史\n\nhistory 20\n# 最近 20 条\n\n!42\n# 执行历史编号 42（bash）\n\n!!\n# 执行上一条命令\n\n# 搜索：按 Ctrl+R 后输入关键字',
       tags: ['历史', '命令', 'shell']
+    },
+    {
+      cmd: 'time',
+      title: '测量命令执行时间',
+      cat: '系统',
+      desc: '统计命令的运行时间（real/user/sys）。shell 可能有内建 time，行为与 /usr/bin/time 略有差异；需要详细资源统计时可用 /usr/bin/time -v（GNU）。',
+      usage: 'time 命令 [参数...]',
+      example: 'time ls -R /usr\n# 显示耗时统计\n\n{ time sleep 1; } 2>&1\n# 在某些 shell 中需这样捕获输出\n\n/usr/bin/time -v your_cmd\n# 更详细的资源统计（GNU time）',
+      tags: ['性能', '耗时', 'time']
+    },
+    {
+      cmd: 'timeout',
+      title: '限制命令运行时长',
+      cat: '系统',
+      desc: '在指定时间后向命令发送信号（默认 SIGTERM），超时则终止，常用于防止命令卡死。可用 -s 指定信号，--foreground 等选项视实现而定。',
+      usage: 'timeout [选项] 持续时间 命令 [参数...]',
+      example: 'timeout 5s sleep 10\n# 5 秒后终止 sleep，返回非零（视实现）\n\ntimeout 30 ping -c 100 example.com\n# 最多运行约 30 秒\n\ntimeout --signal=KILL 10s slow_cmd\n# 超时后发送 SIGKILL',
+      tags: ['超时', '限制', 'timeout']
+    },
+    {
+      cmd: 'nice / renice',
+      title: '调整进程优先级',
+      cat: '进程',
+      desc: 'nice 启动时设置优先级（niceness，数值越大越“友好”、优先级越低，范围通常 -20 到 19，普通用户只能调高不能调低）。renice 调整已运行进程的优先级，需相应权限。',
+      usage: 'nice [-n 值] 命令 | renice 优先级 [-p PID] [-u 用户]',
+      example: 'nice -n 10 long_job\n# 以较低优先级运行\n\nrenice 5 -p 1234\n# 调整 PID 1234 的优先级\n\nrenice 10 -u alice\n# 调整用户 alice 的部分进程优先级（需权限）',
+      tags: ['优先级', 'nice', 'renice', '进程']
+    },
+    {
+      cmd: 'shutdown / reboot / poweroff',
+      title: '关机与重启（systemd 常用）',
+      cat: '系统',
+      desc: 'shutdown 可安排定时关机/重启并通知用户（如 shutdown -h now、shutdown -r now）。reboot、poweroff 常为快捷命令（可能是 systemctl 的封装）。操作会影响所有用户，通常需要 root；在生产环境务必确认。',
+      usage: 'shutdown [选项] 时间 [消息] | reboot | poweroff',
+      example: 'sudo shutdown -h now\n# 立即关机\n\nsudo shutdown -r +5 "系统将在5分钟后重启"\n# 5 分钟后重启并广播消息\n\nsudo reboot\n# 立即重启\n\nsudo poweroff\n# 立即关机',
+      tags: ['关机', '重启', 'shutdown', 'reboot', 'systemd']
+    },
+    {
+      cmd: 'traceroute / tracepath',
+      title: '追踪到目标的网络路径',
+      cat: '网络',
+      desc: 'traceroute 显示数据包到达目标经过的路由节点（TTL 递增探测），常用 UDP/ICMP（取决于实现与权限）。tracepath 类似且通常不需要特权，输出信息略有不同。结果受防火墙与 ICMP 策略影响，可能出现 *。',
+      usage: 'traceroute [选项] 主机 | tracepath 主机',
+      example: 'traceroute example.com\n# 跟踪路由（可能需 root 才能用某些模式）\n\ntraceroute -n 8.8.8.8\n# 不解析主机名，加快显示\n\ntracepath example.com\n# 无需 root 的路径探测（能力视系统而定）',
+      tags: ['路由', '路径', '网络诊断', 'traceroute']
+    },
+    {
+      cmd: 'md5sum / sha256sum',
+      title: '计算文件校验和',
+      cat: '文件',
+      desc: 'md5sum、sha256sum（以及 sha1sum 等）计算文件的哈希值，用于完整性校验。校验时可用 -c 读取校验文件。注意 md5/sha1 抗碰撞性较弱，不应用于安全签名场景；sha256 更常用于完整性校验。',
+      usage: 'md5sum 文件... | sha256sum 文件... | sha256sum -c 校验文件',
+      example: 'sha256sum file.iso\n# 输出 SHA256 校验和\n\nmd5sum file.iso\n# 输出 MD5（仅用于完整性/兼容场景）\n\nsha256sum file1 file2 > SHA256SUMS\n# 生成校验文件\n\nsha256sum -c SHA256SUMS\n# 校验文件是否匹配',
+      tags: ['校验', '哈希', 'sha256', 'md5', '完整性']
+    },
+    {
+      cmd: 'tree',
+      title: '以树形显示目录结构',
+      cat: '目录',
+      desc: 'tree 递归以树状图列出目录内容，便于直观查看层级。部分精简系统可能未预装（需单独安装包）。也可用 ls -R，但可读性不如 tree。',
+      usage: 'tree [选项] [目录]',
+      example: 'tree\n# 显示当前目录树\n\ntree -L 2\n# 限制显示深度为 2 层\n\ntree -a\n# 包含隐藏文件\n\ntree -d\n# 仅显示目录',
+      tags: ['目录树', '结构', 'tree']
+    },
+    {
+      cmd: 'cal',
+      title: '显示日历',
+      cat: '系统',
+      desc: '在终端显示日历（默认当月）。可指定年月；不同实现参数略有差异（如 ncal）。适合快速查看日期。',
+      usage: 'cal [[月] 年]',
+      example: 'cal\n# 显示本月日历\n\ncal 2025\n# 显示整年日历（部分实现）\n\ncal 12 2025\n# 显示 2025 年 12 月',
+      tags: ['日历', '日期', 'cal']
     },
     {
       cmd: 'alias / unalias',
@@ -824,14 +932,59 @@
       tags: ['定时任务', '计划', 'cron', '调度']
     },
     {
-      cmd: 'man / --help',
+      cmd: 'man / --help / info',
       title: '查看命令帮助文档',
       cat: '查看',
-      desc: 'man 打开命令的手册页；多数命令支持 --help 或 -h 显示简要用法。遇到参数不确定时优先查帮助。',
-      usage: 'man 命令 | 命令 --help',
-      example: 'man ls\n# 查看 ls 手册（按 q 退出）\n\nls --help\n# 查看简要帮助\n\nman -k keyword\n# 按关键字搜索手册（等价 apropos）',
-      tags: ['帮助', '文档', '手册', '用法']
-    }
+      desc: 'man 打开手册页（man page），按 q 退出，/ 搜索，n/N 跳转；多数命令支持 --help 或 -h 输出简要用法。info 常用于 GNU 软件的更长文档（节点导航），不同系统可能未安装全部内容。shell 内建命令可用 help 命令名（如 help cd）查看 bash 内建帮助。',
+      usage: 'man 命令 | 命令 --help | info 命令 | help 内建命令',
+      example: 'man ls\n# 查看 ls 手册（q 退出，/ 搜索）\n\nls --help\n# 简要用法\n\nman -k keyword\n# 按关键字搜索手册（apropos）\n\ninfo coreutils "ls invocation"\n# 查看 info 文档（若已安装）\n\nhelp cd\n# 查看 bash 内建 cd 的帮助',
+      tags: ['帮助', '文档', '手册', 'info', '用法']
+    },
+    {
+      cmd: 'nano',
+      title: '简单终端文本编辑器（nano）',
+      cat: '查看',
+      desc: 'nano 界面比 vi/vim 更接近“所见即输入”，底部会显示常用快捷键提示（^ 表示 Ctrl）。适合快速改配置文件；保存用 Ctrl+O，退出用 Ctrl+X。若文件为只读或无权限会提示，需用 sudo 或调整权限。',
+      usage: 'nano [选项] 文件',
+      example: 'nano file.txt\n# 打开或新建文件\n\n# 常用快捷键（nano 界面底部提示）：\n# Ctrl+O  保存（Write Out），回车确认文件名\n# Ctrl+X  退出；若有未保存修改会询问\n# Ctrl+W  搜索\n# Ctrl+K  剪切当前行（可多次剪切拼接）\n# Ctrl+U  粘贴\n# Ctrl+G  帮助',
+      tags: ['编辑器', 'nano', '文本编辑', '终端']
+    },
+    {
+      cmd: 'watch',
+      title: '周期性执行并全屏刷新输出',
+      cat: '系统',
+      desc: 'watch 每隔一段时间重新执行命令并清屏显示结果，便于观察变化（如监控进程、磁盘、网络）。默认间隔约 2 秒，可用 -n 指定秒数；Ctrl+C 退出。注意命令中的管道/引号在 shell 中解析，复杂命令建议用引号包裹。',
+      usage: 'watch [选项] 命令...',
+      example: 'watch -n 1 date\n# 每秒刷新显示时间\n\nwatch -n 2 "df -h"\n# 每 2 秒查看磁盘使用\n\nwatch -d "ss -tuln"\n# -d 高亮显示变化（若支持）\n\nwatch -n 5 "ps aux | grep nginx"\n# 周期查看匹配进程（注意 grep 也可能匹配自身，视环境）',
+      tags: ['监控', '周期', '刷新', 'watch']
+    },
+    {
+      cmd: 'tmux',
+      title: '终端复用器（tmux）',
+      cat: '系统',
+      desc: 'tmux 可在一个终端里创建多个会话/窗口/窗格，断线后会话可保留（配合重新 attach）。默认前缀键常为 Ctrl+b（以下用 C-b 表示）。会话与窗口/窗格概念不同：会话可包含多个窗口，窗口可分多个窗格。',
+      usage: 'tmux [命令]',
+      example: '# 会话\n# tmux            新建会话\n# tmux new -s dev 新建命名会话\n# tmux ls         列出会话\n# tmux attach -t dev  连接会话\n# tmux kill-session -t dev  删除会话\n\n# 在 tmux 内常用（先按 C-b，再按下键）：\n# c        新建窗口\n# n/p      下/上一个窗口\n# "        水平分割窗格\n# %        垂直分割窗格\n# 方向键   切换窗格\n# d        脱离（detach）会话\n# ,        重命名当前窗口',
+      tags: ['终端复用', 'tmux', '会话', '远程']
+    },
+    {
+      cmd: 'screen',
+      title: '终端复用器（GNU screen）',
+      cat: '系统',
+      desc: 'screen 与 tmux 类似，用于会话保持与多窗口。默认前缀键常为 Ctrl+a（以下用 C-a 表示）。适合旧环境或习惯 screen 的场景；新项目更常见 tmux，但两者都很常用。',
+      usage: 'screen [选项]',
+      example: '# 常用命令（shell 中）\n# screen          新建会话\n# screen -S name  新建命名会话\n# screen -ls      列出会话\n# screen -r name  恢复会话\n\n# 在 screen 内常用（先按 C-a，再按键）：\n# c        新建窗口\n# n/p      下/上一个窗口\n# d        脱离会话\n# k        关闭当前窗口（有确认）\n# ?        查看帮助',
+      tags: ['终端复用', 'screen', '会话', '远程']
+    },
+    {
+      cmd: 'getent',
+      title: '查询系统数据库条目',
+      cat: '系统',
+      desc: 'getent 从系统数据库（Name Service Switch）查询条目，如 passwd、group、hosts、services 等，结果反映系统实际解析顺序（可能包含 LDAP/NIS 等），比直接读 /etc/passwd 更贴近运行时。',
+      usage: 'getent 数据库 [键...]',
+      example: 'getent passwd alice\n# 查询用户 alice 的记录\n\ngetent group sudo\n# 查询组信息\n\ngetent hosts example.com\n# 解析主机名（类似 gethostbyname）\n\ngetent services 80\n# 按端口查服务名',
+      tags: ['用户', '组', 'DNS', '查询', 'nss']
+    },
   ];
 
   function normalize(text) {
