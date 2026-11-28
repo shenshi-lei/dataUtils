@@ -10,16 +10,16 @@
 
   var ui = TB.ui;
 
-  var CATS = ['全部', '文件', '目录', '查看', '搜索', '权限', '用户', '系统', '进程', '网络', '压缩', '磁盘'];
+  var CATS = ['全部', '文件', '目录', '查看', '搜索', '文本', '权限', '用户', '系统', '进程', '网络', '压缩', '磁盘'];
 
   var COMMANDS = [
     {
       cmd: 'ls',
       title: '列出目录内容',
       cat: '目录',
-      desc: '显示指定目录下的文件和子目录。默认按名称排序，不加参数时列出当前目录。',
+      desc: '列出目录下的条目（默认当前目录）。常用组合：-l 长格式、-a 显示以 . 开头的隐藏文件（含 . 和 .. 取决于实现）、-h 与 -l 配合人类可读大小、-t 按修改时间排序、-S 按大小排序、-R 递归。注意：在某些系统中别名可能加了 --color；通配符展开由 shell 完成。',
       usage: 'ls [选项] [路径...]',
-      example: 'ls\n# 列出当前目录\n\nls -l\n# 长格式显示权限、所有者、大小、时间\n\nls -la /var/log\n# 显示所有文件（含隐藏文件），并用长格式\n\nls -lh\n# 以人类可读的单位显示文件大小（K/M/G）',
+      example: 'ls\n# 列出当前目录（多数实现不含隐藏文件）\n\nls -l\n# 长格式：权限、链接数、属主/组、大小、时间、名称\n\nls -la /var/log\n# 含隐藏文件的长格式\n\nls -lh\n# 长格式并用 K/M/G 显示大小\n\nls -lt\n# 按修改时间倒序（常用查看最新文件）\n\nls -1\n# 每行一个，便于脚本处理',
       tags: ['列表', '目录', '文件', '隐藏', 'list']
     },
     {
@@ -62,28 +62,28 @@
       cmd: 'cp',
       title: '复制文件或目录',
       cat: '文件',
-      desc: '将文件或目录复制到指定位置。复制目录时需加 -r；覆盖前可用 -i 交互确认。',
-      usage: 'cp [选项] 源 目标',
-      example: 'cp a.txt b.txt\n# 复制文件\n\ncp -r src/ backup/\n# 递归复制目录\n\ncp -i a.txt /tmp/\n# 覆盖前提示确认\n\ncp -a src/ dst/\n# 保留权限、时间等属性归档复制',
+      desc: '将文件或目录复制到目标位置。复制目录必须使用 -r/-R（或 -a）。覆盖已有文件时，某些系统会因别名或选项而提示（可用 -i），也可用 -f 尝试强制覆盖；跨文件系统复制会产生新 inode。复制目录时注意目标路径：cp -r src dst 若 dst 已存在，结果是 dst/src；若想把 src 内容并入 dst，通常写成 cp -r src/. dst/（视需求调整）。',
+      usage: 'cp [选项] 源... 目标',
+      example: 'cp a.txt b.txt\n# 复制文件并改名\n\ncp a.txt /tmp/\n# 复制到目录\n\ncp -r src/ backup/\n# 递归复制目录（backup/src 或 backup 取决于是否已存在）\n\ncp -ai src/ dst/\n# 归档复制并在覆盖前询问（-a 含 -r、保属性等，依实现而定）\n\ncp -a src/. dst/\n# 尽量把 src 内容复制进 dst（注意尾部 /. 的语义）',
       tags: ['复制', '拷贝', '文件', '目录', 'copy']
     },
     {
       cmd: 'mv',
       title: '移动或重命名',
       cat: '文件',
-      desc: '移动文件/目录到新位置，或在同一目录下重命名。跨文件系统移动相当于复制后删除。',
-      usage: 'mv [选项] 源 目标',
-      example: 'mv old.txt new.txt\n# 重命名文件\n\nmv file.txt /tmp/\n# 移动文件到 /tmp\n\nmv -i a.txt b.txt\n# 覆盖前提示确认',
+      desc: '在同一文件系统内通常只是改名/移动目录项（快）；跨文件系统会先复制再删除原文件，耗时与空间取决于数据。若目标已存在且是目录，会把源移入该目录；若目标已存在且是文件，默认可能被覆盖（行为依实现/选项），建议用 -i 交互确认，或用 -n 尽量不覆盖。',
+      usage: 'mv [选项] 源... 目标',
+      example: 'mv old.txt new.txt\n# 同目录下重命名\n\nmv file.txt /tmp/\n# 移动到目录 /tmp/file.txt\n\nmv -i a.txt b.txt\n# 覆盖 b.txt 前提示\n\nmv -n a.txt b.txt\n# 若 b.txt 已存在则不覆盖（视实现支持）\n\nmv dir1 dir2/\n# 若 dir2 存在则移入 dir2/dir1，否则尝试改名为 dir2',
       tags: ['移动', '重命名', 'rename', 'move']
     },
     {
       cmd: 'rm',
       title: '删除文件或目录',
       cat: '文件',
-      desc: '删除文件或目录。-r 递归删除目录，-f 强制不提示。该操作不可轻易恢复，使用前请确认路径（尤其避免误删 / 或重要数据）。',
+      desc: '删除文件或目录（默认不删目录）。-r/-R 递归删除目录树；-f 忽略不存在的文件且不提示（部分场景仍受权限影响）。删除通常不可恢复；切勿在不确定路径时使用 rm -rf（尤其是以 /、*、变量未展开等开头的危险组合）。对重要数据优先用 -i 交互确认，或先用 ls/echo 打印将删除的内容再执行。',
       usage: 'rm [选项] 文件...',
-      example: 'rm file.txt\n# 删除文件\n\nrm -i file.txt\n# 删除前确认\n\nrm -r build/\n# 递归删除目录及其内容（谨慎）\n\nrm -rf temp/\n# 强制递归删除且不提示（非常谨慎）',
-      tags: ['删除', '移除', 'remove', '递归']
+      example: 'rm file.txt\n# 删除文件\n\nrm -i file.txt\n# 每次删除前确认\n\nrm -r build/\n# 递归删除目录 build 及内容（谨慎）\n\nrm -ri build/\n# 递归删除但每步/按实现提示确认\n\n# 危险示例勿随意执行：rm -rf / 或 rm -rf "$DIR"/\nrm -rf temp/\n# 强制递归删除且不提示（仅在你100%确认 temp/ 路径正确时使用）',
+      tags: ['删除', '移除', 'remove', '递归', '危险']
     },
     {
       cmd: 'touch',
@@ -98,10 +98,19 @@
       cmd: 'cat',
       title: '查看或连接文件内容',
       cat: '查看',
-      desc: '将文件内容输出到标准输出，也可连接多个文件。查看大文件时更推荐 less 或 tail。',
+      desc: '将文件（或标准输入）连接后输出到标准输出。适合小文件快速查看、拼接文件；大文件会刷屏且无翻页，建议用 less。cat -n 会给所有行编号，-b 仅对非空行编号（行为依实现）。重定向 > 会覆盖目标文件，>> 追加；合并时注意编码与二进制文件。',
       usage: 'cat [选项] [文件...]',
-      example: 'cat file.txt\n# 显示文件内容\n\ncat -n file.txt\n# 显示行号\n\ncat a.txt b.txt > all.txt\n# 合并文件并写入新文件',
+      example: 'cat file.txt\n# 输出文件内容\n\ncat -n file.txt\n# 显示行号（含空行）\n\ncat a.txt b.txt > all.txt\n# 合并到 all.txt（会覆盖 all.txt）\n\ncat >> notes.txt\n# 从标准输入追加写入，Ctrl+D 结束',
       tags: ['查看', '输出', '合并', '内容']
+    },
+    {
+      cmd: 'more',
+      title: '分页查看文件（逐屏）',
+      cat: '查看',
+      desc: '从标准输入或文件逐屏显示内容，适合在管道或简单场景下分页浏览。交互能力通常弱于 less（按空格翻页，回车下一行，q 退出，取决于实现）。',
+      usage: 'more [选项] [文件]',
+      example: 'more long.txt\n# 逐屏查看文件\n\nls -lR /etc | more\n# 分页查看命令输出\n\nmore -n 20 file.txt\n# 设置每屏行数（不同实现参数略有差异）',
+      tags: ['分页', '查看', '逐屏', 'more']
     },
     {
       cmd: 'less',
@@ -125,27 +134,27 @@
       cmd: 'tail',
       title: '查看文件末尾',
       cat: '查看',
-      desc: '输出文件的末尾若干行（默认 10 行）。-f 可持续跟踪文件新增内容，常用于看日志。',
+      desc: '输出文件末尾内容（默认 10 行）。-n N 指定行数；也可用 -n +N 从第 N 行开始到末尾（GNU 常见写法）。-f 跟踪追加内容（日志常用）；在某些系统中 -F 更适合文件被轮转/重建的场景。大量二进制文件不适合直接查看。',
       usage: 'tail [选项] [文件...]',
-      example: 'tail file.txt\n# 显示最后 10 行\n\ntail -n 50 app.log\n# 显示最后 50 行\n\ntail -f /var/log/nginx/access.log\n# 实时跟踪日志新增内容',
+      example: 'tail file.txt\n# 最后 10 行\n\ntail -n 50 app.log\n# 最后 50 行\n\ntail -n +20 file.txt\n# 从第 20 行开始输出到末尾\n\ntail -f /var/log/nginx/access.log\n# 实时跟踪（Ctrl+C 退出）\n\ntail -F app.log\n# 更适合日志轮转后的继续跟踪（取决于实现）',
       tags: ['末尾', '日志', '跟踪', '实时']
     },
     {
       cmd: 'grep',
       title: '文本搜索过滤',
       cat: '搜索',
-      desc: '在文件或输入流中搜索匹配指定模式的行。支持正则表达式，是日志排查和文本过滤的常用工具。',
+      desc: '在文件或标准输入中匹配行。默认使用 BRE（基础正则）；-E 扩展正则，-P Perl 正则（若支持）。常用：-n 行号、-i 忽略大小写、-r/-R 递归、-l 只列文件名、-v 反选、-F 固定字符串（不当正则）、-w 单词边界、-C/-A/-B 显示上下文。注意二进制文件可能被当作二进制处理（视实现，可用 -a 强制按文本或 -I 忽略二进制）。正则与 shell 通配符不同，模式中含特殊字符时建议用单引号。',
       usage: 'grep [选项] 模式 [文件...]',
-      example: 'grep "error" app.log\n# 搜索包含 error 的行\n\ngrep -n "TODO" src/*.js\n# 显示匹配行号\n\ngrep -r "main" ./src\n# 递归搜索目录\n\ngrep -i "warn" app.log\n# 忽略大小写\n\ngrep -v "^#" config.conf\n# 反向匹配（排除注释行）',
+      example: 'grep "error" app.log\n# 输出含 error 的行\n\ngrep -n "TODO" src/*.js\n# 显示行号\n\ngrep -rn "main" ./src\n# 递归搜索（部分实现对符号链接等有 -R 差异）\n\ngrep -i "warn" app.log\n# 忽略大小写\n\ngrep -v "^#" config.conf\n# 排除以 # 开头的行\n\ngrep -E "err(or|no)" app.log\n# 扩展正则\n\ngrep -F "a.b[c]" file.txt\n# 固定字符串，不按正则解析',
       tags: ['搜索', '过滤', '正则', '文本', '查找']
     },
     {
       cmd: 'find',
       title: '按条件查找文件',
       cat: '搜索',
-      desc: '在目录树中按名称、类型、大小、时间等条件查找文件和目录。功能强大，适合定位文件位置。',
+      desc: '在目录树中按表达式筛选文件/目录。常用：-name（支持通配符，注意被 shell 展开时要加引号）、-type f/d、-size、-mtime/-mmin、-path/-iname（部分实现）、-maxdepth 限制深度。-delete 会直接删除匹配项且不可逆；-exec 在匹配上执行命令，处理带空格路径时更安全用法是 -print0 配合 xargs -0。路径放在表达式前，多个路径表示从多处开始查找。',
       usage: 'find [路径...] [表达式]',
-      example: 'find . -name "*.log"\n# 按名称查找 .log 文件\n\nfind /var -type f -size +100M\n# 查找大于 100MB 的普通文件\n\nfind . -mtime -1\n# 查找最近 1 天内修改过的文件\n\nfind . -name "*.tmp" -delete\n# 查找并删除匹配文件（谨慎）',
+      example: 'find . -name "*.log"\n# 当前目录树下按名称匹配（shell 不展开则由 find 处理）\n\nfind /var -type f -size +100M\n# 普通文件且大于 100MiB（单位视实现，常见 +100M）\n\nfind . -type f -mtime -1\n# 最近 1 天内内容修改过的文件\n\nfind . -name "*.tmp" -print\n# 明确打印（默认行为类似）\n\nfind . -name "*.tmp" -delete\n# 直接删除匹配文件（极谨慎，建议先不加 -delete 预览）\n\nfind . -type f -name "*.sh" -exec chmod +x {} \\;\n# 对每个匹配执行命令',
       tags: ['查找', '文件', '路径', '条件', '搜索']
     },
     {
@@ -170,27 +179,27 @@
       cmd: 'chmod',
       title: '修改文件权限',
       cat: '权限',
-      desc: '修改文件或目录的读(r)、写(w)、执行(x)权限。可用符号模式（u/g/o/a +/- rwx）或数字模式（如 755）。',
+      desc: '修改权限位（rwx）。数字模式常用三位或四位：三位为 ugo（如 755、644）；四位时首位为特殊位（setuid/setgid/sticky，较少在日常脚本中手写时省略理解）。符号模式如 u+x、go-w、a=r 可叠加。对目录递归 chmod -R 时要注意：文件和目录常需要不同权限（例如目录常需 x 才能进入），盲目对整棵树用 644 会导致目录不可访问；更稳妥的做法是分别处理目录与文件（如 find 搭配 -type d/-type f）。',
       usage: 'chmod [选项] 模式 文件...',
-      example: 'chmod 755 script.sh\n# 所有者 rwx，组和其他 rx\n\nchmod +x script.sh\n# 为所有用户增加执行权限\n\nchmod -R 644 docs/\n# 递归设置权限（对目录递归需谨慎）\n\nchmod u+w,g-w file.txt\n# 所有者加写，组去写',
+      example: 'chmod 755 script.sh\n# rwxr-xr-x：所有者可读写执行，组/其他可读执行\n\nchmod 644 file.txt\n# rw-r--r--：常见文件权限\n\nchmod +x script.sh\n# 为所有身份增加执行位\n\nchmod u=rw,go=r file.txt\n# 精确设置权限\n\n# 谨慎：递归改为 644 会让目录失去 x，可能无法进入\nchmod -R 644 docs/\n\n# 更常见：目录 755、文件 644（示意，需在 shell 中分开执行）\n# find docs -type d -exec chmod 755 {} \\;\n# find docs -type f -exec chmod 644 {} \\;',
       tags: ['权限', '可执行', '读写', 'mode']
     },
     {
       cmd: 'chown',
       title: '修改所有者和所属组',
       cat: '权限',
-      desc: '更改文件或目录的所有者（user）和/或所属组（group）。通常需要管理员权限。',
-      usage: 'chown [选项] 用户[:组] 文件...',
-      example: 'sudo chown alice file.txt\n# 修改所有者\n\nsudo chown alice:developers file.txt\n# 同时修改所有者和组\n\nsudo chown -R www-data:www-data /var/www\n# 递归修改目录归属',
+      desc: '修改文件/目录的属主和属组。格式常见为 user、user:group 或 :group（部分实现支持仅改组但写法随版本略有差异，更通用的是 chgrp 或 chown :group）。通常需要 root 或相应权限；递归 -R 会作用于整棵树，务必确认路径。符号链接的归属处理取决于选项（如 -h 作用于链接本身，行为因系统而异）。',
+      usage: 'chown [选项] [用户][:[组]] 文件...',
+      example: 'sudo chown alice file.txt\n# 仅修改所有者\n\nsudo chown alice:developers file.txt\n# 同时修改所有者和组\n\nsudo chown :developers file.txt\n# 仅修改组（是否可用取决于实现；也可用 chgrp）\n\nsudo chown -R www-data:www-data /var/www\n# 递归修改（谨慎确认路径）',
       tags: ['所有者', '用户', '组', '属主']
     },
     {
       cmd: 'chgrp',
       title: '修改所属组',
       cat: '权限',
-      desc: '更改文件或目录的所属组。与 chown :group 类似，但只改组信息。',
+      desc: '仅修改文件/目录的所属组。执行者通常需要对文件有足够权限，且目标组需为其所属组或具备管理员权限（具体由系统策略决定）。递归 -R 影响范围大，操作前请确认路径。',
       usage: 'chgrp [选项] 组 文件...',
-      example: 'sudo chgrp developers project/\n# 修改所属组\n\nsudo chgrp -R developers project/\n# 递归修改',
+      example: 'sudo chgrp developers project/\n# 修改单个路径的所属组\n\nsudo chgrp -R developers project/\n# 递归修改（谨慎）\n\n# 查看当前组信息可用 ls -l 或 stat',
       tags: ['组', '权限', '属组']
     },
     {
@@ -395,10 +404,19 @@
       cmd: 'ip',
       title: '查看与配置网络',
       cat: '网络',
-      desc: 'iproute2 工具集的核心命令，用于查看和配置 IP 地址、路由、链路等。是 ifconfig/route 的现代替代。',
-      usage: 'ip [对象] [命令]',
-      example: 'ip addr\n# 查看网络接口和 IP 地址\n\nip -br addr\n# 简洁显示地址信息\n\nip route\n# 查看路由表\n\nip link show\n# 查看网卡链路状态',
+      desc: 'iproute2 核心命令，用于查看/配置地址(addr)、链路(link)、路由(route)等。常用只读查看；修改操作（如 ip addr add、ip link set）通常需要 root 且会立即影响网络，务必在可控环境操作。-br 可简洁输出，-4/-6 过滤协议族。',
+      usage: 'ip [选项] 对象 {命令}',
+      example: 'ip addr\n# 查看所有接口地址（详细）\n\nip -br addr\n# 简洁列出接口、状态、IP\n\nip -4 addr show dev eth0\n# 仅查看 IPv4\n\nip route\n# 查看路由表\n\nip route get 8.8.8.8\n# 查看到目标会走哪条路由/出口\n\nip link show\n# 查看链路层状态',
       tags: ['IP', '网卡', '路由', '网络', '地址']
+    },
+    {
+      cmd: 'dig',
+      title: 'DNS 查询工具',
+      cat: '网络',
+      desc: '向 DNS 服务器查询记录（A/AAAA/MX/TXT 等），输出比 nslookup 更详细且适合脚本解析。常用于排查域名解析问题。',
+      usage: 'dig [@服务器] 域名 [类型] [选项]',
+      example: 'dig example.com\n# 查询 A 记录（默认）\n\ndig example.com AAAA\n# 查询 IPv6 记录\n\ndig @8.8.8.8 example.com MX\n# 指定 DNS 服务器查询 MX 记录\n\ndig +short example.com\n# 只输出精简结果',
+      tags: ['DNS', '解析', '查询', 'dig', '网络排障']
     },
     {
       cmd: 'ping',
@@ -413,9 +431,9 @@
       cmd: 'ss / netstat',
       title: '查看网络连接与端口',
       cat: '网络',
-      desc: '显示套接字、监听端口和网络连接。ss 是较新的工具，速度更快；netstat 在部分系统需额外安装。',
+      desc: '查看套接字/连接/监听端口。ss 来自 iproute2，查询内核更直接、通常更快；netstat 来自 net-tools，部分精简系统可能未预装。常用组合：-t TCP、-u UDP、-l 监听、-n 数字不解析、-p 显示进程（常需 root）。排查“端口被谁占用”时，ss -tulnp 或 netstat -tulnp 最常用。',
       usage: 'ss [选项] | netstat [选项]',
-      example: 'ss -tuln\n# 查看 TCP/UDP 监听端口（数字显示）\n\nss -tunap\n# 显示连接及对应进程（需权限）\n\nnetstat -tulnp\n# netstat 等效查看（若可用）',
+      example: 'ss -tuln\n# 列出 TCP/UDP 监听端口（数字形式）\n\nss -tunap\n# 含已建立连接及进程信息（需权限才能看到部分进程）\n\nss -tn state established\n# 仅已建立的 TCP 连接\n\nnetstat -tulnp\n# net-tools 等效写法（若已安装）',
       tags: ['端口', '连接', '监听', 'socket', 'TCP', 'UDP']
     },
     {
@@ -440,27 +458,27 @@
       cmd: 'ssh',
       title: '远程登录服务器',
       cat: '网络',
-      desc: '通过加密连接登录远程主机或在远程执行命令。默认使用 22 端口，可用密钥认证提升安全性。',
+      desc: '通过 SSH 登录远程主机或执行远程命令。默认端口 22；可用 -p 指定端口，-i 指定私钥，-L/-R/-D 做端口转发与代理（较进阶）。首次连接会提示主机指纹并写入 ~/.ssh/known_hosts，确认主机身份很重要。密钥认证推荐 ed25519/RSA（按策略），私钥权限应严格（如 chmod 600）。',
       usage: 'ssh [选项] [用户@]主机 [命令]',
-      example: 'ssh user@192.168.1.10\n# 登录远程主机\n\nssh -p 2222 user@host\n# 指定端口\n\nssh -i ~/.ssh/id_ed25519 user@host\n# 使用指定私钥\n\nssh user@host "uname -a"\n# 在远程执行单条命令',
+      example: 'ssh user@192.168.1.10\n# 交互式登录\n\nssh -p 2222 user@host\n# 指定端口\n\nssh -i ~/.ssh/id_ed25519 user@host\n# 指定私钥文件\n\nssh user@host "uname -a"\n# 在远程执行单条命令并返回\n\nssh -o StrictHostKeyChecking=accept-new user@host\n# 首次连接自动接受新主机键（脚本场景谨慎使用）',
       tags: ['远程', '登录', '加密', '终端']
     },
     {
       cmd: 'scp / rsync',
       title: '远程复制与同步文件',
       cat: '网络',
-      desc: 'scp 基于 SSH 复制文件；rsync 支持增量同步、压缩和断点续传，更适合大批量或重复同步。',
+      desc: 'scp 通过 SSH 进行简单文件复制，递归用 -r。rsync 更适合重复同步：可增量传输、保留属性、断点续传（配合合适选项）、压缩等。rsync 路径尾部斜杠含义很关键：src/ 表示“复制目录内内容”到目标；src 表示“复制整个目录”到目标下（结果常为 target/src）。跨机器用 user@host:/path。首次大同步后再跑 rsync 可显著减少传输量。',
       usage: 'scp [选项] 源 目标 | rsync [选项] 源 目标',
-      example: 'scp file.txt user@host:/tmp/\n# 复制本地文件到远程\n\nscp -r dir/ user@host:/opt/\n# 递归复制目录\n\nrsync -avz ./src/ user@host:/app/src/\n# 增量同步目录（注意尾部斜杠含义）',
-      tags: ['复制', '同步', '远程', '传输', '备份']
+      example: 'scp file.txt user@host:/tmp/\n# 本地 -> 远程\n\nscp -r dir/ user@host:/opt/\n# 递归复制目录\n\nscp -P 2222 user@host:/var/log/app.log .\n# 指定端口（注意 scp 用大写 -P）\n\nrsync -avz ./src/ user@host:/app/src/\n# 同步 src/ 内内容到远端 /app/src/\n\nrsync -avz ./src user@host:/app/\n# 同步得到 /app/src（多一层目录）\n\nrsync -avzn --delete ./src/ user@host:/app/src/\n# 先 dry-run(-n) 查看将删除/变更的内容，再去掉 -n 执行（--delete 谨慎）',
+      tags: ['复制', '同步', '远程', '传输', '备份', 'rsync']
     },
     {
       cmd: 'tar',
       title: '打包与解包归档',
       cat: '压缩',
-      desc: '将多个文件打包为 tar 归档，常与 gzip/bzip2/xz 结合压缩。是 Linux 下最常见的归档工具。',
-      usage: 'tar [选项] [归档文件] [文件...]',
-      example: 'tar -czvf archive.tar.gz dir/\n# 打包并 gzip 压缩\n\ntar -xzvf archive.tar.gz\n# 解压 .tar.gz\n\ntar -xvf archive.tar\n# 解包 .tar\n\ntar -tf archive.tar.gz\n# 查看归档内容（不解压）',
+      desc: '创建或解开 tar 归档；是否压缩取决于选项：-z gzip(.tar.gz/.tgz)、-j bzip2(.tar.bz2)、-J xz(.tar.xz)。常用模式：-c 创建、-x 解开、-t 列表。-v 详细输出，-f 必须指定归档文件名且通常放在选项组末尾（习惯写法）。解压到指定目录用 -C 目录。注意：解压时路径遍历等风险来自不可信归档，尽量在空目录解压并核对列表（-t）。打包时源路径前的 ./ 与绝对路径会影响解压后的布局。',
+      usage: 'tar -c|-x|-t [zjJvpfC...] 归档 [文件或目录...]',
+      example: 'tar -czvf archive.tar.gz dir/\n# 打包并 gzip 压缩（dir/ 会保留该目录名）\n\ntar -czvf archive.tar.gz -C /path/to dir\n# 在 /path/to 下打包 dir，归档内路径更整洁\n\ntar -xzvf archive.tar.gz\n# 解压到当前目录\n\ntar -xJf archive.tar.xz\n# 解压 xz 归档（顺序可灵活，但 -f 后通常跟文件名）\n\ntar -tf archive.tar.gz\n# 仅查看内容，不解压\n\ntar -xvf archive.tar.gz -C /tmp/out\n# 解压到指定目录（目录需存在）',
       tags: ['打包', '解压', '压缩', '归档', 'gzip']
     },
     {
@@ -482,6 +500,24 @@
       tags: ['压缩', '解压', 'gz']
     },
     {
+      cmd: 'bzip2 / bunzip2',
+      title: 'bzip2 压缩与解压',
+      cat: '压缩',
+      desc: '对单个文件进行 bzip2 压缩或解压（.bz2），压缩率通常高于 gzip 但较慢。也可用 bunzip2 或 bzip2 -d 解压。',
+      usage: 'bzip2 [选项] 文件 | bunzip2 [选项] 文件.bz2',
+      example: 'bzip2 file.txt\n# 压缩为 file.txt.bz2\n\nbzip2 -k file.txt\n# 压缩并保留原文件\n\nbunzip2 file.txt.bz2\n# 解压\n\nbzip2 -d file.txt.bz2\n# 等价解压',
+      tags: ['压缩', '解压', 'bz2']
+    },
+    {
+      cmd: 'xz / unxz',
+      title: 'xz 压缩与解压',
+      cat: '压缩',
+      desc: '对单个文件进行 xz 压缩或解压（.xz），压缩率高、速度较慢。常见于源码包；tar 可用 -J 处理 .tar.xz。',
+      usage: 'xz [选项] 文件 | unxz [选项] 文件.xz',
+      example: 'xz file.txt\n# 压缩为 file.txt.xz\n\nxz -k file.txt\n# 压缩并保留原文件\n\nunxz file.txt.xz\n# 解压\n\nxz -d file.txt.xz\n# 等价解压',
+      tags: ['压缩', '解压', 'xz']
+    },
+    {
       cmd: 'echo',
       title: '输出文本或变量',
       cat: '查看',
@@ -498,6 +534,69 @@
       usage: 'printf 格式 [参数...]',
       example: 'printf "%s\\n" "hello"\n# 输出字符串并换行\n\nprintf "%-10s %5d\\n" "apple" 3\n# 左对齐字符串和右对齐数字',
       tags: ['格式化', '输出', '脚本']
+    },
+    {
+      cmd: 'nl',
+      title: '给文件内容加行号',
+      cat: '查看',
+      desc: '把文件或标准输入按行输出并标注行号，适合在不等同于 cat -n 行为细节时进行更细粒度的编号（与实现参数有关）。',
+      usage: 'nl [选项] [文件]',
+      example: 'nl file.txt\n# 显示带行号的内容\n\nnl -ba file.txt\n# 尽量为所有行编号（取决于实现）',
+      tags: ['行号', '查看', '文本']
+    },
+    {
+      cmd: 'file',
+      title: '识别文件类型',
+      cat: '查看',
+      desc: '根据文件内容特征判断文件类型（文本、可执行、图片、压缩包等），比仅靠扩展名更可靠。',
+      usage: 'file [选项] 文件...',
+      example: 'file /bin/ls\n# 查看可执行文件类型\n\nfile image.png\n# 查看文件类型\n\nfile -i notes.txt\n# 显示 MIME 类型（若支持）',
+      tags: ['文件类型', 'MIME', '识别']
+    },
+    {
+      cmd: 'stat',
+      title: '显示文件或文件系统详细状态',
+      cat: '查看',
+      desc: '显示文件的 inode、大小、权限、时间戳等详细信息，也可查看文件系统信息（取决于选项）。',
+      usage: 'stat [选项] 文件...',
+      example: 'stat file.txt\n# 查看文件详细状态\n\nstat -f /\n# 查看文件系统信息（若支持 -f）',
+      tags: ['元数据', 'inode', '时间戳', '权限']
+    },
+    {
+      cmd: 'diff',
+      title: '比较文件差异',
+      cat: '文本',
+      desc: '逐行比较两个文件或目录的差异。常用 -u 生成统一格式补丁，便于阅读与传递给 patch。',
+      usage: 'diff [选项] 文件1 文件2',
+      example: 'diff a.txt b.txt\n# 显示差异\n\ndiff -u a.txt b.txt\n# 统一格式输出（常用于补丁）\n\ndiff -r dir1 dir2\n# 递归比较目录',
+      tags: ['比较', '差异', '补丁', '文本']
+    },
+    {
+      cmd: 'tac',
+      title: '反向输出文件内容',
+      cat: '文本',
+      desc: '从最后一行开始向前输出文件内容，与 cat 相反。可用于快速查看倒序日志片段。',
+      usage: 'tac [选项] [文件...]',
+      example: 'tac file.txt\n# 反向输出整文件\n\ntac a.log | less\n# 从末尾方向浏览',
+      tags: ['反向', '文本', '查看']
+    },
+    {
+      cmd: 'tr',
+      title: '字符转换或删除',
+      cat: '文本',
+      desc: '对标准输入进行字符替换、删除或压缩重复字符。常用于大小写转换、清洗分隔符等简单文本处理。',
+      usage: 'tr [选项] 集合1 [集合2]',
+      example: "tr 'a-z' 'A-Z' < file.txt\n# 转为大写\n\necho \"a  b\" | tr -s ' '\n# 压缩连续空格\n\ntr -d '\\r' < win.txt > unix.txt\n# 删除回车符",
+      tags: ['字符', '替换', '删除', '文本']
+    },
+    {
+      cmd: 'column',
+      title: '对齐文本为多列',
+      cat: '文本',
+      desc: '将输入按列对齐显示，常用于把分隔文本整理成表格状输出（依赖实现支持）。',
+      usage: 'column [选项] [文件]',
+      example: "mount | column -t\n# 按表格对齐显示\n\necho -e \"a:1\\nb:22\" | column -t -s ':'\n# 指定分隔符对齐",
+      tags: ['列', '对齐', '表格', '文本']
     },
     {
       cmd: 'wc',
@@ -563,6 +662,87 @@
       tags: ['参数', '管道', '批处理', '组合']
     },
     {
+      cmd: 'realpath',
+      title: '解析为绝对规范路径',
+      cat: '文件',
+      desc: '将路径解析为绝对路径，并可解析符号链接（行为依赖选项）。适合脚本里需要稳定路径时使用。',
+      usage: 'realpath [选项] 文件...',
+      example: 'realpath ././a/../b\n# 输出规范化后的绝对路径\n\nrealpath -m ./maybe/missing\n# 不要求路径存在时也尝试规范化（视实现）',
+      tags: ['路径', '绝对路径', '规范化']
+    },
+    {
+      cmd: 'basename / dirname',
+      title: '提取路径的文件名或目录部分',
+      cat: '文件',
+      desc: 'basename 取路径最后一段（可去掉后缀）；dirname 取目录部分。常用于 shell 脚本路径处理。',
+      usage: 'basename 路径 [后缀] | dirname 路径',
+      example: 'basename /etc/passwd\n# 输出 passwd\n\nbasename /etc/passwd .conf\n# 可按需去掉后缀\n\ndirname /etc/passwd\n# 输出 /etc',
+      tags: ['路径', '文件名', '目录', '脚本']
+    },
+    {
+      cmd: 'readlink',
+      title: '读取符号链接指向',
+      cat: '文件',
+      desc: '读取符号链接的目标或解析路径（GNU 常用 -f 解析到最终路径）。用于排查链接指向或脚本中获取真实路径。',
+      usage: 'readlink [选项] 链接',
+      example: 'readlink /usr/bin/python3\n# 显示链接目标\n\nreadlink -f /usr/bin/python3\n# 递归解析到最终路径',
+      tags: ['符号链接', '路径', '解析']
+    },
+    {
+      cmd: 'pgrep / pkill',
+      title: '按名称查找或发送信号给进程',
+      cat: '进程',
+      desc: 'pgrep 按进程名或条件查找 PID；pkill 按名称向匹配进程发送信号。使用 pkill 时要注意匹配范围，避免误杀。',
+      usage: 'pgrep [选项] 模式 | pkill [选项] 模式',
+      example: 'pgrep -fl nginx\n# 列出匹配进程的 PID 与命令行\n\npgrep -u alice sshd\n# 查找某用户下匹配进程\n\npkill -TERM nginx\n# 向匹配名称的进程发送 TERM（谨慎）',
+      tags: ['进程', 'PID', '查找', '信号']
+    },
+    {
+      cmd: 'lsof',
+      title: '列出被进程打开的文件',
+      cat: '进程',
+      desc: '查看哪些进程打开了某文件、目录或网络套接字。排查“文件被占用”“端口被谁监听”等问题常用（通常需权限）。',
+      usage: 'lsof [选项]',
+      example: 'lsof -i :80\n# 查看占用 80 端口的进程\n\nlsof /var/log/syslog\n# 查看谁打开了该文件\n\nlsof -u alice\n# 查看某用户打开的文件（视权限）',
+      tags: ['打开文件', '端口', '占用', '排查']
+    },
+    {
+      cmd: 'dmesg',
+      title: '查看内核环形缓冲区消息',
+      cat: '系统',
+      desc: '显示内核启动信息与硬件/驱动相关日志。排查硬件识别、驱动错误、OOM 等问题常用；可配合 tail、grep 或 --follow。',
+      usage: 'dmesg [选项]',
+      example: 'dmesg | tail -n 80\n# 查看最近内核消息\n\ndmesg -T\n# 尽量显示可读时间（若支持）\n\nsudo dmesg --follow\n# 实时跟踪内核消息',
+      tags: ['内核', '日志', '硬件', '排查']
+    },
+    {
+      cmd: 'timedatectl',
+      title: '查看与设置系统时间（systemd）',
+      cat: '系统',
+      desc: 'systemd 环境下查看和设置时间、时区、NTP 同步状态。是 date 的补充，便于统一管理时间服务。',
+      usage: 'timedatectl [命令]',
+      example: 'timedatectl\n# 查看时间、时区与 NTP 状态\n\nsudo timedatectl set-timezone Asia/Shanghai\n# 设置时区\n\nsudo timedatectl set-ntp true\n# 启用网络时间同步',
+      tags: ['时间', '时区', 'NTP', 'systemd']
+    },
+    {
+      cmd: 'lsblk',
+      title: '列出块设备信息',
+      cat: '磁盘',
+      desc: '以树形方式列出块设备（磁盘、分区、LVM 等）的名称、大小、挂载点等信息，便于快速了解存储布局。',
+      usage: 'lsblk [选项]',
+      example: 'lsblk\n# 查看块设备树\n\nlsblk -f\n# 显示文件系统与 UUID\n\nlsblk -o NAME,SIZE,TYPE,MOUNTPOINT',
+      tags: ['磁盘', '分区', '块设备', '挂载']
+    },
+    {
+      cmd: 'lscpu',
+      title: '显示 CPU 架构信息',
+      cat: '系统',
+      desc: '显示 CPU 型号、核心数、线程、架构等信息（来自 /proc/cpuinfo 等），用于确认硬件能力。',
+      usage: 'lscpu',
+      example: 'lscpu\n# 查看 CPU 详细信息\n\nlscpu | grep -E "Model name|Socket|CPU\\(s\\)"',
+      tags: ['CPU', '硬件', '架构', '系统信息']
+    },
+    {
       cmd: 'tee',
       title: '同时输出到屏幕和文件',
       cat: '查看',
@@ -606,6 +786,33 @@
       usage: 'env | printenv [变量名]',
       example: 'env\n# 列出所有环境变量\n\nprintenv HOME\n# 查看指定变量\n\nenv LANG=C ls\n# 以指定环境变量运行命令',
       tags: ['环境变量', '查看', '运行环境']
+    },
+    {
+      cmd: 'who / w',
+      title: '查看已登录用户',
+      cat: '系统',
+      desc: 'who 显示当前已登录用户及来源/终端；w 在 who 基础上显示每个用户正在执行的命令和负载，便于了解谁在用系统。',
+      usage: 'who [选项] | w [选项]',
+      example: 'who\n# 列出已登录用户\n\nw\n# 显示登录用户及当前活动\n\nwho -b\n# 显示上次系统启动时间（若支持）',
+      tags: ['登录', '用户会话', '在线']
+    },
+    {
+      cmd: 'last',
+      title: '查看登录历史记录',
+      cat: '系统',
+      desc: '读取 /var/log/wtmp（及相关文件）显示历史登录/登出与系统重启等记录，用于审计或排查异常登录。',
+      usage: 'last [选项] [用户名|终端]',
+      example: 'last\n# 显示最近登录记录\n\nlast -n 10\n# 最近 10 条\n\nlast alice\n# 查看指定用户的登录历史',
+      tags: ['登录历史', '审计', 'wtmp']
+    },
+    {
+      cmd: 'type / command',
+      title: '查看命令类型与解析位置',
+      cat: '系统',
+      desc: 'shell 内建 type 用于判断命令是别名、函数、内建还是外部程序；command -v 可脚本化检查命令是否存在。',
+      usage: 'type 命令... | command -v 命令',
+      example: 'type ls\n# 显示 ls 的解析类型（别名/内建/路径等）\n\ntype -a python3\n# 列出所有匹配项\n\ncommand -v node >/dev/null && echo "found"',
+      tags: ['shell', '别名', '内建', '命令解析']
     },
     {
       cmd: 'crontab',

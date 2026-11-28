@@ -10,16 +10,16 @@
 
   var ui = TB.ui;
 
-  var CATS = ['全部', '文件', '目录', '查看', '搜索', '系统', '进程', '网络', '磁盘', '用户', '服务', 'PowerShell'];
+  var CATS = ['全部', '文件', '目录', '查看', '搜索', '文本', '系统', '进程', '网络', '磁盘', '用户', '服务', 'PowerShell'];
 
   var COMMANDS = [
     {
       cmd: 'dir',
       title: '列出目录内容',
       cat: '目录',
-      desc: '显示指定目录中的文件和子目录列表（CMD）。可按属性、时间排序并显示详细信息。',
+      desc: '列出目录中的文件与子目录（CMD）。/a 可按属性筛选（如 /a:h 隐藏、/a:s 系统）；/s 递归；/b 仅文件名/路径（便于脚本）；/o 排序（如 /o:n 名称、/o:-d 日期倒序）。通配符由 CMD 展开。编码与中文显示可能受代码页影响。',
       usage: 'dir [路径] [选项]',
-      example: 'dir\n# 列出当前目录\n\ndir /a\n# 显示包含隐藏和系统文件在内的所有文件\n\ndir /s /b *.log\n# 递归列出所有 .log 文件的完整路径\n\ndir /o:-d\n# 按日期倒序排列',
+      example: 'dir\n# 当前目录\n\ndir /a\n# 包含隐藏与系统文件\n\ndir /s /b *.log\n# 递归仅输出路径（适合重定向/脚本）\n\ndir /o:-d\n# 按修改时间倒序\n\ndir /ad\n# 仅显示目录',
       tags: ['列表', '目录', '文件', 'CMD', 'list']
     },
     {
@@ -53,9 +53,9 @@
       cmd: 'copy',
       title: '复制文件',
       cat: '文件',
-      desc: '将一个或多个文件复制到指定位置（CMD）。可用于合并文件，但目录复制更推荐 robocopy 或 xcopy。',
+      desc: '在 CMD 中复制一个或多个文件到目标位置。/y 覆盖时不提示，/-y 强制提示（视默认行为而定）。合并用 + 连接源文件写入目标。copy 不适合复制目录树（目录请用 xcopy/robocopy）。复制大量文件或需要保留属性/镜像时优先考虑 robocopy。',
       usage: 'copy [选项] 源 目标',
-      example: 'copy a.txt b.txt\n# 复制文件\n\ncopy a.txt D:\\backup\\\n# 复制到指定目录\n\ncopy /y a.txt b.txt\n# 覆盖时不提示确认\n\ncopy a.txt + b.txt all.txt\n# 合并文件内容',
+      example: 'copy a.txt b.txt\n# 复制并改名\n\ncopy a.txt D:\\backup\\\n# 复制到目录（保留原文件名）\n\ncopy /y a.txt b.txt\n# 覆盖已有 b.txt 时不提示\n\ncopy a.txt + b.txt all.txt\n# 按顺序合并内容到 all.txt\n\ncopy *.log D:\\logs\\\n# 复制匹配的多个文件到目录',
       tags: ['复制', '拷贝', '文件', 'copy']
     },
     {
@@ -71,28 +71,28 @@
       cmd: 'robocopy',
       title: '健壮的文件复制/同步',
       cat: '文件',
-      desc: 'Windows 自带的强大复制与镜像同步工具（CMD）。支持断点续传、多线程、重试和详细日志，适合备份和大批量传输。',
+      desc: 'Windows 内置的强大复制工具，适合大批量、断点续传、镜像备份。/E 复制子目录含空目录；/MIR 相当于 /E 加上镜像删除（会删除目标中源不存在的内容，极谨慎）。/Z 可重启模式、/MT 多线程（视版本）、/R 与 /W 控制重试次数与等待秒数。注意：robocopy 的退出码为“状态码”而非单纯 0/1 成功失败，0–7 通常表示有文件被复制或无需复制等“成功/部分成功”范围，>=8 往往表示错误（脚本中需按规则判断）。',
       usage: 'robocopy 源 目标 [文件] [选项]',
-      example: 'robocopy C:\\src D:\\dst /E\n# 复制目录树（含空目录）\n\nrobocopy C:\\src D:\\dst /MIR\n# 镜像同步（会删除目标多余文件，谨慎）\n\nrobocopy C:\\src D:\\dst /E /Z /R:3 /W:5\n# 可重启模式并设置重试次数/等待时间\n\nrobocopy C:\\src D:\\dst *.txt /S\n# 只复制匹配文件（含子目录）',
+      example: 'robocopy C:\\src D:\\dst /E\n# 复制目录树（含空目录）\n\nrobocopy C:\\src D:\\dst /MIR\n# 镜像同步：会删除目标端多余文件（务必先确认路径）\n\nrobocopy C:\\src D:\\dst /E /Z /R:3 /W:5\n# 可重启模式，失败重试 3 次、每次间隔 5 秒\n\nrobocopy C:\\src D:\\dst *.txt /S\n# 仅复制 .txt，/S 含子目录但不含空目录\n\nrobocopy C:\\src D:\\dst /E /MT:8 /LOG:C:\\log.txt\n# 多线程与日志（/MT 可用性与数值范围视系统版本）',
       tags: ['复制', '同步', '镜像', '备份', 'robust']
     },
     {
       cmd: 'move',
       title: '移动或重命名文件',
       cat: '文件',
-      desc: '移动文件（或在同一目录下重命名）/ 移动目录（CMD）。覆盖行为可用 /y 或 /-y 控制。',
+      desc: '在 CMD 中移动或重命名文件/目录。/y 覆盖不提示，/-y 提示确认（取决于系统默认）。不能跨不同卷以“纯重命名”方式移动目录的某些情形会失败，需改用复制后删除（robocopy/xcopy 等思路）；跨卷移动文件通常会复制再删除。目标为已存在目录时会移入其中。',
       usage: 'move [选项] 源 目标',
-      example: 'move old.txt new.txt\n# 重命名文件\n\nmove file.txt D:\\backup\\\n# 移动文件到目录\n\nmove /y a.txt b.txt\n# 覆盖时不提示',
+      example: 'move old.txt new.txt\n# 同目录重命名\n\nmove file.txt D:\\backup\\\n# 移动到目录（注意末尾反斜杠习惯）\n\nmove /y a.txt b.txt\n# 覆盖 b.txt 不提示\n\nmove "C:\\path with spaces\\a.txt" D:\\tmp\\',
       tags: ['移动', '重命名', 'rename', 'move']
     },
     {
       cmd: 'del / erase',
       title: '删除文件',
       cat: '文件',
-      desc: '删除一个或多个文件（CMD）。/s 可在子目录中删除，/q 安静模式，/f 强制删除只读文件。删除后通常不可恢复。',
+      desc: '删除文件（CMD）。/f 强制删除只读文件；/s 在子目录中删除匹配文件；/q 安静模式不逐个确认。del 不会删除目录本身（删除目录用 rd/rmdir）。删除不可轻易恢复，使用通配符（如 *）前先用 dir 确认范围。erase 与 del 等价。',
       usage: 'del [选项] 文件...',
-      example: 'del file.txt\n# 删除文件\n\ndel /f /q temp\\*.tmp\n# 强制静默删除匹配文件\n\ndel /s /q build\\*\n# 递归删除目录下文件（谨慎）',
-      tags: ['删除', '移除', '文件', 'erase']
+      example: 'del file.txt\n# 删除单个文件\n\ndel /f /q temp\\*.tmp\n# 强制、静默删除匹配文件\n\ndel /s /q build\\*\n# 递归删除 build 下所有文件（不删目录结构，视具体行为谨慎使用）\n\n# 先预览：dir /s build\\*.tmp',
+      tags: ['删除', '移除', '文件', 'erase', '危险']
     },
     {
       cmd: 'ren / rename',
@@ -122,12 +122,21 @@
       tags: ['分页', '查看', '输出']
     },
     {
+      cmd: 'more',
+      title: '分页显示输出',
+      cat: '查看',
+      desc: '逐屏显示文本内容或命令输出（CMD），适合查看较长文件。按空格翻页，q 退出。',
+      usage: 'more [文件] | 命令 | more',
+      example: 'more long.txt\n# 分页查看文件\n\ndir /s | more\n# 分页查看命令输出',
+      tags: ['分页', '查看', '输出']
+    },
+    {
       cmd: 'find / findstr',
       title: '在文本中搜索字符串',
       cat: '搜索',
-      desc: 'find（CMD）用于搜索简单字符串；findstr 支持更强的模式匹配（类似简化版 grep），可递归搜索文件内容。',
-      usage: 'find "字符串" 文件 | findstr [选项] 模式 [文件...]',
-      example: 'find "ERROR" app.log\n# 在文件中查找包含 ERROR 的行\n\nfindstr /s /n /i "error" *.log\n# 递归、显示行号、忽略大小写搜索\n\nfindstr /r "^ID:[0-9]*" data.txt\n# 使用正则模式搜索',
+      desc: 'find 用于在文件中查找包含指定字符串的行（简单匹配）。findstr 功能更强：/s 递归、/n 行号、/i 忽略大小写、/r 正则（其正则语法与 POSIX grep 不完全相同，需查阅文档）、/c: 整串匹配等。注意中文/编码可能影响结果；大量文件搜索时注意性能与通配符展开。',
+      usage: 'find "字符串" [文件...] | findstr [选项] 模式 [文件...]',
+      example: 'find "ERROR" app.log\n# 查找含 ERROR 的行\n\ntype app.log | find "ERROR"\n# 从管道中过滤\n\nfindstr /s /n /i "error" *.log\n# 递归搜索当前目录树下 *.log\n\nfindstr /r "^ID:[0-9][0-9]*" data.txt\n# 正则示例（写法因需求调整）',
       tags: ['搜索', '查找', '文本', '过滤', 'grep']
     },
     {
